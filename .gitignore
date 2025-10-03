@@ -1,0 +1,16 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Virtual environment
+SpirobModelEnv/
+.venv/
+.env/
+
+# Generated outputs
+Geom_Data_CSV/
+meshes/
+*.xml
+
+# Editor settings
+.vscode/
