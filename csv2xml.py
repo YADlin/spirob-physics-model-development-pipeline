@@ -289,6 +289,7 @@ def write_mjcf_from_sites_csv(
         path.append(f'      <site site="c{c}_{len(frames):03d}_s2"/>')
         path.append(f'      <site site="c{c}_{len(frames):03d}_s1"/>')
         for i in range(len(frames)-1, 0, -1):
+            path.append(f'      <site site="c{c}_{i:03d}_s2"/>')
             path.append(f'      <site site="c{c}_{i:03d}_s1"/>')
         tendon_xml.append(f'''    <spatial name="cable_{c}" width="{config.tendon_width}">
 {os.linesep.join(path)}
