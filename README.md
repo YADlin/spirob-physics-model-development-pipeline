@@ -79,7 +79,3 @@ Organized_Version/
 ## 📜 License
 
 [MIT License](LICENSE)
-
-````
-
----
