@@ -211,7 +211,9 @@ def write_mjcf_from_sites_csv(
           friction="{config.friction[0]} {config.friction[1]} {config.friction[2]}"/>
     <site size="{config.site_size}"/>
     <joint damping="{config.joint_damping}" stiffness="{config.joint_stiffness}" limited="{str(config.joint_type=='hinge').lower()}"/>
-    <motor ctrllimited="true" ctrlrange="{config.ctrl_range[0]} {config.ctrl_range[1]}" gear="{config.motor_gear}"/>
+    <default class="cable_motor">
+        <motor ctrllimited="true" ctrlrange="{config.ctrl_range[0]} {config.ctrl_range[1]}" gear="{config.motor_gear}"/>
+    </default>
   </default>
 
   <asset>
@@ -298,7 +300,7 @@ def write_mjcf_from_sites_csv(
     # actuators
     actuator_xml = []
     for c in range(n_cables):
-        actuator_xml.append(f'    <motor name="motor_c{c}" tendon="cable_{c}"/>')
+        actuator_xml.append(f'    <motor class="cable_motor" name="motor_c{c}" tendon="cable_{c}"/>')
 
     # assemble
     xml = header + nested + "\n  </worldbody>\n  <tendon>\n" + \
