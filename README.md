@@ -9,7 +9,7 @@ The pipeline automates the workflow:
 
 ---
 
-## 🚀 Usage
+## Usage
 
 ### Requirements
 - Python 3.9+  
@@ -51,7 +51,7 @@ python build.py --noclean
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```
 Organized_Version/
@@ -68,7 +68,7 @@ Organized_Version/
 
 ---
 
-## 📝 Notes
+## Notes
 
 * Generated files (`Geom_Data_CSV/`, `meshes/`, and XML) are ignored by Git.
 * Use `params.json` to control geometry parameters.
@@ -76,6 +76,6 @@ Organized_Version/
 
 ---
 
-## 📜 License
+## License
 
 [MIT License](LICENSE)
