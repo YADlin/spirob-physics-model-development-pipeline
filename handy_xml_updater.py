@@ -9,7 +9,7 @@ first_joint_stiffness = 100
 first_joint_damping   = 50
 
 # Beta rule parameters (for subsequent joints)
-beta = 1.04
+beta = 1.03
 base_stiffness = 0.2     # stiffness of joint_002
 base_damping   = 0.01     # damping   of joint_002
 
@@ -18,7 +18,7 @@ new_link_pos  = "0 0 0.22"  # "0 0 0.22"
 new_link_quat = "0 0 -1 0"
 
 # Site positions
-target_site_pos = "0.2 0.0 0.3"
+target_site_pos = "0.02 0.0 0.04"
 tip_site_pos    = "0 0 0.005"
 
 # ------------------------------------------------------------
@@ -105,5 +105,5 @@ if len(all_bodies) > 0:
 # 6. Save updated XML
 # ------------------------------------------------------------
 
-tree.write("robot_updated.xml")
-print("Saved → robot_updated.xml")
+tree.write("spirob_physics_model.xml")
+print("Saved → spirob_physics_model.xml")
