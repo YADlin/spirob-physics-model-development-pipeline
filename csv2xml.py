@@ -6,6 +6,16 @@ import numpy as np
 import argparse
 from dataclasses import dataclass
 from typing import Tuple
+import json
+
+# Added for fixing the tendon distance from body center
+# Load params.json ONCE
+with open("params.json") as f:
+    params = json.load(f)
+TENDON_INWARD_SHIFT = 0.0015     # shift towards the center (meters)
+PHI_DEG = float(params["phi_deg"])   # read from params.json
+HALF_PHI = math.radians(PHI_DEG / 2)
+
 
 @dataclass
 class MJCFConfig:
@@ -23,7 +33,8 @@ class MJCFConfig:
     friction: Tuple[float, float, float] = (0.6, 0.01, 0.001)
     site_size: float = 0.001
     joint_damping: float = 0.01
-    joint_stiffness: float = 0.05
+    joint_stiffness: float = 0.2
+    beta: float = 1.03   # beta > 1 → decreasing stiffness/damping along chain
     motor_gear: float = 1.0
     ctrl_range: Tuple[float, float] = (-5.0, 0.0)
     tendon_width: float = 0.0006
@@ -173,9 +184,42 @@ def write_mjcf_from_sites_csv(
         for c, ss in e["sites"].items():
             if np.linalg.norm(ss["s1"] - ss["s2"]) < 1e-9:
                 raise ValueError(f"Tendon site s1==s2 for element {e['idx']}, cable {c}.")
-        sites_local = {c: {"s1": _world_to_local(R, p0, ss["s1"]),
-                           "s2": _world_to_local(R, p0, ss["s2"])}
-                       for c, ss in e["sites"].items()}
+        # sites_local = {c: {"s1": _world_to_local(R, p0, ss["s1"]),
+        #                    "s2": _world_to_local(R, p0, ss["s2"])}
+        #                for c, ss in e["sites"].items()}
+        # --- BEGIN: tendon radius corrected placement ---
+        sites_local = {}
+
+        for c, ss in e["sites"].items():
+
+            # world → local
+            s1_local = _world_to_local(R, p0, ss["s1"]).astype(float)
+            s2_local = _world_to_local(R, p0, ss["s2"]).astype(float)
+
+            # r_old = radius of s1 (your chosen rule)
+            r1_old = float(np.linalg.norm(s1_local[:2]))
+
+            # safe fallback if s1 is on the axis
+            if r1_old < 1e-12:
+                unit_r = np.array([1.0, 0.0])
+                r1_old = 1e-3
+            else:
+                unit_r = s1_local[:2] / r1_old
+
+            # axial separation
+            dz = float(s2_local[2] - s1_local[2])
+
+            # new radii
+            r1_new = max(r1_old - TENDON_INWARD_SHIFT, 1e-6)
+            r2_new = max(r1_old - TENDON_INWARD_SHIFT - dz * math.tan(HALF_PHI), 1e-6)
+
+            # apply new positions
+            s1_local[:2] = unit_r * r1_new
+            s2_local[:2] = unit_r * r2_new
+
+            # store
+            sites_local[c] = {"s1": s1_local, "s2": s2_local}
+        # --- END: tendon radius corrected placement ---
         frames.append(dict(p0=p0, p1=p1, R=R, quat=q, L=L, sites_local=sites_local))
     # relative poses for nesting
     rel = []
@@ -226,6 +270,15 @@ def write_mjcf_from_sites_csv(
     <light name="light3" diffuse="1 1 1" active="true" pos="0 -0.1 1.5" dir="0 0 -1"/>
     <geom type="plane" size="2 2 0.05" rgba="0.9 0.9 0.9 1"/>
 '''
+        # ---- Joint stiffness/damping geometric decay (β > 1 gives decreasing values) ----
+    base_k = config.joint_stiffness
+    base_d = config.joint_damping
+
+    beta3 = config.beta ** 3   # β^3
+
+    # For joint i: k_i = k0 / (β^3)^i
+    joint_stiffness = [ base_k / (beta3 ** i) for i in range(len(frames)) ]
+    joint_damping   = [ base_d / (beta3 ** i) for i in range(len(frames)) ]
 
     # bodies chain
     body_xml = []
@@ -238,9 +291,17 @@ def write_mjcf_from_sites_csv(
 
         # joint
         if config.joint_type == "hinge":
-            jtag = f'<joint name="j_{i+1:0{digits}d}" type="hinge" axis="{config.hinge_axis_local[0]} {config.hinge_axis_local[1]} {config.hinge_axis_local[2]}" range="-{math.radians(config.hinge_range_deg)} {math.radians(config.hinge_range_deg)}"/>'
+            jtag = (
+                f'<joint name="j_{i+1:0{digits}d}" type="hinge" '
+                f'axis="{config.hinge_axis_local[0]} {config.hinge_axis_local[1]} {config.hinge_axis_local[2]}" '
+                f'range="-{math.radians(config.hinge_range_deg)} {math.radians(config.hinge_range_deg)}" '
+                f'damping="{joint_damping[i]}" stiffness="{joint_stiffness[i]}" />'
+            )
         else:
-            jtag = f'<joint name="j_{i+1:0{digits}d}" type="ball"/>'
+            jtag = (
+                f'<joint name="j_{i+1:0{digits}d}" type="ball" '
+                f'damping="{joint_damping[i]}" stiffness="{joint_stiffness[i]}" />'
+            )
 
         # geoms
         geoms = []
