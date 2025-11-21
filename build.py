@@ -39,7 +39,7 @@ def main():
 
     # Step 2: STL (ignore crash if files exist)
     stl_exit = run_step("python csv2geom.py --in Geom_Data_CSV/Spirob_geom_data.csv",
-                        "Generating STL meshes", check=False)
+                        "Generating STL meshes", check=False) # change csv2geom.py to csv2geom_trilob.py for trilob geometry (3 cable model)
     if not os.path.isdir("meshes") or len(os.listdir("meshes")) == 0:
         print("❌ No STL files generated — treating as failure.")
         sys.exit(stl_exit)
