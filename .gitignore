@@ -14,3 +14,7 @@ meshes/
 
 # Editor settings
 .vscode/
+
+# Python
+*.pyo
+venv/
