@@ -8,13 +8,9 @@ from dataclasses import dataclass
 from typing import Tuple
 import json
 
-# Added for fixing the tendon distance from body center
-# Load params.json ONCE
-with open("params.json") as f:
-    params = json.load(f)
-TENDON_INWARD_SHIFT = 0.0015     # shift towards the center (meters)
-PHI_DEG = float(params["phi_deg"])   # read from params.json
-HALF_PHI = math.radians(PHI_DEG / 2)
+# TENDON_INWARD_SHIFT and PHI_DEG are now passed explicitly via MJCFConfig
+# (read from params.json in build.py / the caller) so there is no top-level
+# file read here that could crash on import.
 
 
 @dataclass
@@ -38,12 +34,21 @@ class MJCFConfig:
     motor_gear: float = 1.0
     ctrl_range: Tuple[float, float] = (-5.0, 0.0)
     tendon_width: float = 0.0006
+    tendon_inward_shift: float = 0.0015
+    phi_deg: float = 5.7
     integrator: str = "implicit"
     timestep: float = 0.002
     gravity: Tuple[float, float, float] = (0.0, 0.0, -9.81)
     capsule_radius_scale: float = 0.25
     capsule_radius_min: float = 8e-4
     mesh_scale_attr: str = None
+
+    # Post-generation overrides (populated from params.json "post_gen" block)
+    post_gen: dict = None
+
+    def __post_init__(self):
+        if self.post_gen is None:
+            self.post_gen = {}
 
     # =========================
     # Presets
@@ -173,6 +178,10 @@ def write_mjcf_from_sites_csv(
     elements, n_cables = _parse_sites_csv(csv_path)
     if not elements: raise ValueError("CSV has no elements.")
 
+    # Use config values for tendon placement (no more module-level constants)
+    TENDON_INWARD_SHIFT = config.tendon_inward_shift
+    HALF_PHI = math.radians(config.phi_deg / 2)
+
     # frames & local site coords
     frames = []
     for e in elements:
@@ -270,17 +279,40 @@ def write_mjcf_from_sites_csv(
     <light name="light3" diffuse="1 1 1" active="true" pos="0 -0.1 1.5" dir="0 0 -1"/>
     <geom type="plane" size="2 2 0.05" rgba="0.9 0.9 0.9 1"/>
 '''
+    # ── post_gen overrides (from params.json "post_gen" block) ─────────────
+    post = config.post_gen   # dict, may be empty
+
+    # Body placement — override where link_001 sits in the world
+    robot_pos  = post.get("robot_pos")   # [x, y, z]  or None → keep computed
+    robot_quat = post.get("robot_quat")  # [w, x, y, z] or None → keep computed
+
+    # Tip and target visual sites
+    tip_site_pos    = post.get("tip_site_pos")     # [x, y, z] in last body frame
+    target_site_pos = post.get("target_site_pos")  # [x, y, z] in worldbody
+
         # ---- Joint stiffness/damping geometric decay (β > 1 gives decreasing values) ----
-    base_k = config.joint_stiffness
-    base_d = config.joint_damping
+    base_k = post.get("joint_stiffness_base", config.joint_stiffness)
+    base_d = post.get("joint_damping_base",   config.joint_damping)
+    beta   = post.get("joint_beta",           config.beta)
+    beta3  = beta ** 3
 
-    beta3 = config.beta ** 3   # β^3
+    # Per-joint values: k_i = base_k / (β³)^i  (i=0 is the base/first joint)
+    joint_stiffness = [base_k / (beta3 ** i) for i in range(len(frames))]
+    joint_damping   = [base_d / (beta3 ** i) for i in range(len(frames))]
 
-    # For joint i: k_i = k0 / (β^3)^i
-    joint_stiffness = [ base_k / (beta3 ** i) for i in range(len(frames)) ]
-    joint_damping   = [ base_d / (beta3 ** i) for i in range(len(frames)) ]
+    # Optional independent override for joint 0 (the base joint)
+    first_k = post.get("first_joint_stiffness")
+    first_d = post.get("first_joint_damping")
+    if first_k is not None:
+        joint_stiffness[0] = first_k
+    if first_d is not None:
+        joint_damping[0] = first_d
 
-    # bodies chain
+    # Apply robot placement overrides to the root body
+    if robot_pos is not None:
+        rel[0] = (np.array(robot_pos, float), rel[0][1])
+    if robot_quat is not None:
+        rel[0] = (rel[0][0], tuple(float(v) for v in robot_quat))
     body_xml = []
     for i, fr in enumerate(frames):
         name   = f"link_{i+1:0{digits}d}"
@@ -337,6 +369,25 @@ def write_mjcf_from_sites_csv(
     </body>'''
         body_xml.append(block)
 
+    # Optional target site in worldbody
+    target_site_xml = ""
+    if target_site_pos is not None:
+        p = target_site_pos
+        target_site_xml = (f'    <site name="target" type="sphere" size="0.005" '
+                           f'rgba="1 0 0 1" pos="{p[0]} {p[1]} {p[2]}"/>\n')
+
+    # Optional tip site attached to the last (tip) body
+    tip_site_xml = ""
+    if tip_site_pos is not None:
+        p = tip_site_pos
+        tip_site_xml = (f'      <site name="tip_site" type="sphere" size="0.001" '
+                        f'rgba="0 1 0 1" pos="{p[0]} {p[1]} {p[2]}"/>')
+
+    # Inject tip_site into last body block before its closing </body>
+    if tip_site_xml:
+        body_xml[-1] = body_xml[-1].replace("    </body>",
+                                            f"      {tip_site_xml}\n    </body>", 1)
+
     # nest parent→child
     nested = body_xml[-1]
     for k in range(len(body_xml)-2, -1, -1):
@@ -364,7 +415,7 @@ def write_mjcf_from_sites_csv(
         actuator_xml.append(f'    <motor class="cable_motor" name="motor_c{c}" tendon="cable_{c}"/>')
 
     # assemble
-    xml = header + nested + "\n  </worldbody>\n  <tendon>\n" + \
+    xml = header + target_site_xml + nested + "\n  </worldbody>\n  <tendon>\n" + \
           (os.linesep.join(tendon_xml)) + "\n  </tendon>\n  <actuator>\n" + \
           (os.linesep.join(actuator_xml)) + "\n  </actuator>\n</mujoco>\n"
 
@@ -381,6 +432,14 @@ if __name__ == "__main__":
     parser.add_argument("--fast", action="store_true", help="Enable fast preset mode")
     parser.add_argument("--high", action="store_true", help="Enable high-fidelity preset mode")
     parser.add_argument("--digits", type=int, default=3, help="Zero-padding for link names")
+    parser.add_argument("--tendon-shift", type=float, default=0.0015,
+                        help="Tendon inward shift in metres (default: 0.0015)")
+    parser.add_argument("--phi-deg", type=float, default=5.7,
+                        help="Taper angle phi in degrees (default: 5.7)")
+    parser.add_argument("--hinge", action="store_true",
+                        help="Use hinge joints instead of ball joints (n_cables <= 2)")
+    parser.add_argument("--params", default=None,
+                        help="Path to params.json (reads post_gen block for overrides)")
     args = parser.parse_args()
 
     # config selection
@@ -391,7 +450,19 @@ if __name__ == "__main__":
     elif args.high:
         config = MJCFConfig.high_fidelity_mode()
     else:
-        config = MJCFConfig()  # default balanced
+        config = MJCFConfig()
+
+    # Apply user-supplied params (override dataclass defaults)
+    config.tendon_inward_shift = args.tendon_shift
+    config.phi_deg             = args.phi_deg
+    if args.hinge:
+        config.joint_type = "hinge"
+
+    # Load post_gen block from params.json if --params was supplied
+    if args.params:
+        with open(args.params) as f:
+            raw = json.load(f)
+        config.post_gen = raw.get("post_gen", {})
 
     out_xml = write_mjcf_from_sites_csv(
         csv_path=args.input,
