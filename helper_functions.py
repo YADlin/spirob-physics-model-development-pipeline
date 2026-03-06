@@ -62,13 +62,17 @@ Plotting helper
 import matplotlib.pyplot as plt
 
 def plot_quad_chain(quads, title="", color='blue'):
+    """Plot quad chain outlines. Returns the figure without displaying it.
+    Call plt.show() or fig.savefig() externally if needed."""
+    fig = plt.figure()
     for q in quads:
         q = np.array(q)
         closed = np.vstack([q, q[0]])
         plt.plot(closed[:, 0], closed[:, 1], '-', color=color)
     plt.axis('equal')
     plt.title(title)
-    plt.show()
+    plt.close(fig)  # don't block the pipeline; preview.py handles output
+    return fig
 
 ## Function to generate Spiral pose from Spiral parameters
 '''
