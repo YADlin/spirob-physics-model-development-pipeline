@@ -3,5 +3,39 @@
   "d_tip": 0.008,
   "phi_deg": 5.7,
   "Delta_theta_deg": 35.34,
-  "n_cables": 3
+  "n_cables": 3,
+  "tendon_inward_shift": 0.0015,
+  "show_preview": true,
+  "notch_factor": 0.25,
+  "nlobe_t": 0.5,
+  "flat_thickness_ratio": 0.3,
+  "post_gen": {
+    "_comment": "All post_gen fields are optional. Omit any to keep the pipeline default.",
+    "robot_pos": [
+      0,
+      0,
+      0.22
+    ],
+    "robot_quat": [
+      0,
+      0,
+      -1,
+      0
+    ],
+    "joint_stiffness_base": 0.2,
+    "joint_damping_base": 0.01,
+    "joint_beta": 1.03,
+    "first_joint_stiffness": 100,
+    "first_joint_damping": 50,
+    "tip_site_pos": [
+      0,
+      0,
+      0.005
+    ],
+    "target_site_pos": [
+      0.02,
+      0.0,
+      0.04
+    ]
+  }
 }
