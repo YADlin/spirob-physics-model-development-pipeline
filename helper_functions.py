@@ -84,7 +84,8 @@ the return value will have a list of lists of [A0, A1, B1, B0] with each list ha
 from the smallest to the largest element sizewise.
 '''
 def generate_spiral_pose(a=1.0, b=0.1, Length=0.23, delta_theta=np.pi/6):
-    
+
+    e2pb = math.exp(2*math.pi*b)
     A = (a/b)*math.sqrt(b**2 +1)*(e2pb+1)/2 
     Q0 = (1.0/b) * math.log(1.0 + Length/A)
     N = int(math.ceil(Q0/delta_theta))
