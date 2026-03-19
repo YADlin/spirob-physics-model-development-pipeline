@@ -73,16 +73,15 @@ def _build_quads(params):
     b           = _solve_b(phi)
     e2pb        = math.exp(2 * math.pi * b)
     a           = d_tip / (e2pb - 1.0)
-    A           = (a / b) * math.sqrt(b ** 2 + 1)
+    A           = (a / b) * math.sqrt(b ** 2 + 1) * (e2pb+1) / 2 # Correction made on Mar 19, 26 (A was off by a factor of (e2pb+1) / 2 
     Q0          = (1.0 / b) * math.log(1.0 + L / A)
     N           = int(math.ceil(Q0 / delta_theta))
     theta       = np.array([min(k * delta_theta, Q0) for k in range(N + 1)])
 
-    r1 = a * np.exp(b * theta)
+    r1 = (a/2) * (np.exp(2*np.pi*b) + 1) * np.exp(b * theta) # Correction made on Mar 19, 26
     side_A = np.column_stack((r1 * np.cos(theta), r1 * np.sin(theta)))
 
-    theta_s = theta - 2 * math.pi
-    r2 = a * np.exp(b * theta_s)
+    r2 = a * np.exp(b * theta) # Correction made on Mar 19, 26
     side_B = np.column_stack((r2 * np.cos(theta), r2 * np.sin(theta)))
 
     # Form quads [A0, A1, B1, B0]
@@ -109,12 +108,12 @@ def _build_quads(params):
         straight.append(qr)
         cur = qr[1].copy()
 
-    # Invert (biggest at bottom, index 0)
+    # Invert (biggest at bottom, index 0) # Correction made on Mar 19, 26
     inv = []
     for q in straight:
         qi = q.copy()
-        for j in range(4):
-            qi[j][1] = -qi[j][1] + L
+        qi[:, 1] = -qi[:, 1] + L
+        qi = np.array([qi[1], qi[0], qi[3], qi[2]])
         inv.append(qi)
     inv.reverse()
     return inv   # each quad: [A1, A0, B0, B1]  (post-invert naming)
@@ -160,9 +159,9 @@ def _element_stats(quads):
     stats = []
     for i, quad in enumerate(quads):
         A1, A0, B0, B1 = quad
-        height   = float(abs(A1[1] - A0[1]))
-        w_bottom = float(abs(B0[0])) * 2
-        w_top    = float(abs(B1[0])) * 2
+        height   = float(abs(math.dist(A1,A0))) # Correction made on Mar 19, 26
+        w_bottom = float(abs(B1[0])) * 2
+        w_top    = float(abs(B0[0])) * 2
         cx       = 0.0
         cy       = float((A0[1] + A1[1]) / 2)
         stats.append(dict(
@@ -601,8 +600,8 @@ def draw_flat_section(ax, outer_radius, params, title="", quad=None):
     if quad is not None:
         # A1, A0, B0, B1 — use the actual outer radii from the quad
         _, _, B0, B1 = quad
-        r_bot = float(abs(B0[0]))   # outer radius at bottom of element
-        r_top = float(abs(B1[0]))   # outer radius at top of element
+        r_bot = float(abs(B1[0]))   # outer radius at bottom of element # Change made on 19th March 26
+        r_top = float(abs(B0[0]))   # outer radius at top of element
         ht    = r_bot * thickness_ratio   # half-thickness (same both ends)
         # Trapezoid corners: (±r_bot at bottom, ±r_top at top)
         trap_x = [ r_bot,  r_top, -r_top, -r_bot]
