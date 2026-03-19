@@ -199,7 +199,7 @@ Inputs:
     b           = solve_b_for_phi(phi)
     e2pb        = math.exp(2 * math.pi * b)
     a           = d_tip / (e2pb - 1.0)
-    A           = (a / b) * math.sqrt(b ** 2 + 1)
+    A           = (a / b) * math.sqrt(b ** 2 + 1)  * (e2pb+1)/2 
     q0          = (1.0 / b) * math.log(1.0 + L / A)
 
     print(f"""
