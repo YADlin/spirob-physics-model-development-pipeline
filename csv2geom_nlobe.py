@@ -87,21 +87,21 @@ def build_flat_element(row, thickness_ratio=0.3):
     All coordinates shifted so joint_s1 is at z=0.
     """
     # Four corners of the quad in XZ
-    A0x = float(row["joint_s1_x"]);  A0z = float(row["joint_s1_z"])
-    A1x = float(row["joint_s2_x"]);  A1z = float(row["joint_s2_z"])
-    B1x = float(row["c0_s2_x"]);     B1z = float(row["c0_s2_z"])
-    B0x = float(row["c0_s1_x"]);     B0z = float(row["c0_s1_z"])
+    A1x = float(row["joint_s1_x"]);  A1z = float(row["joint_s1_z"])
+    A0x = float(row["joint_s2_x"]);  A0z = float(row["joint_s2_z"])
+    B0x = float(row["c0_s2_x"]);     B0z = float(row["c0_s2_z"])
+    B1x = float(row["c0_s1_x"]);     B1z = float(row["c0_s1_z"])
 
     # Snap hinge points to exactly x=0 (they are ~1e-17 due to float math)
     A0x = 0.0;  A1x = 0.0
 
     # Shift so joint_s1 is at z=0
-    oz = A0z
+    oz = A1z
     pts = [
-        (A0x, 0.0),           # inner bottom
-        (B0x, B0z - oz),      # outer bottom
-        (B1x, B1z - oz),      # outer top
-        (A1x, A1z - oz),      # inner top
+        (A1x, 0.0),           # inner bottom
+        (B1x, B1z - oz),      # outer bottom
+        (B0x, B0z - oz),      # outer top
+        (A0x, A0z - oz),      # inner top
     ]
 
     # Half-thickness
