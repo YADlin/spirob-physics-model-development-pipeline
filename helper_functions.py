@@ -85,20 +85,19 @@ from the smallest to the largest element sizewise.
 '''
 def generate_spiral_pose(a=1.0, b=0.1, Length=0.23, delta_theta=np.pi/6):
     
-    A = (a/b)*math.sqrt(b**2 +1)
+    A = (a/b)*math.sqrt(b**2 +1)*(e2pb+1)/2 
     Q0 = (1.0/b) * math.log(1.0 + Length/A)
     N = int(math.ceil(Q0/delta_theta))
     theta = np.array([min(k*delta_theta, Q0) for k in range(N+1)])
 
-    # Outer spiral (edge A)
-    r1 = a * np.exp(b * theta)
+    # Central line of SpiRob (edge A)
+    r1 = (a/2) * (np.exp(2*np.pi*b) + 1) * np.exp(b * theta)
     x1 = r1 * np.cos(theta)
     y1 = r1 * np.sin(theta)
     side_A = np.column_stack((x1, y1))
 
-    # Inner spiral (edge B), with growth shifted one full turn earlier
-    theta_shifted = theta - 2 * np.pi
-    r2 = a * np.exp(b * theta_shifted)
+    # Inner side of SpiRob (edge B)
+    r2 = a * np.exp(b * theta)
     x2 = r2 * np.cos(theta)
     y2 = r2 * np.sin(theta)
     side_B = np.column_stack((x2, y2))
@@ -187,13 +186,13 @@ list.
 '''
 def Invert_pose(quads, Length):
     invert_quads = []
-    q = quads.copy()
-    for i in range(len(quads)):
-        for j in range(len(q[i])):
-            q[i][j][1] = - q[i][j][1] + Length # This makes the first element at the top
-        invert_quads.append(q[i])
-    invert_quads.reverse()
-    return invert_quads
+    for quad in quads:
+        q = quad.copy()
+        q[:, 1] = -q[:, 1] + Length
+        q = np.array([q[1], q[0], q[3], q[2]])
+        invert_quads.append(q)
+    invert_quads.reverse() # this is to make the base (biggest) element link 1
+    return invert_quads # now the points are [A1, A0, B0, B1]
 
 # To save data to a csv file with allong with the point for cables to go through.
 import csv
@@ -210,14 +209,16 @@ def generate_cable_sites_csv_zrot_from_P(
     World mapping: (x, y) -> (X=x, Y=0, Z=y).
 
     Cable-0 (psi=0):
-      site1: (B0x, 0, B0y),  site2: (B1x, 0, B1y).
+      site1: (B1x, 0, B1y),  site2: (B0x, 0, B0y).
     Cable-c (psi = 2π c / n):
-      site1: (B0x*cosψ, B0x*sinψ, B0y),
-      site2: (B1x*cosψ, B1x*sinψ, B1y).
+      site1: (B1x*cosψ, B1x*sinψ, B0y),
+      site2: (B0x*cosψ, B0x*sinψ, B1y).
 
     radial_scale lets you shrink/grow radius using Bx -> radial_scale*Bx.
     """
-
+    if n_cables <= 0:
+        raise ValueError("n_cables must be > 0")
+        
     # Build header
     cols = ["elem", "joint_s1_x", "joint_s1_y", "joint_s1_z", "joint_s2_x", "joint_s2_y", "joint_s2_z"]
     for c in range(n_cables):
@@ -229,17 +230,17 @@ def generate_cable_sites_csv_zrot_from_P(
         w.writerow(cols)
 
         for i, quad in enumerate(P, start=1):
-            # Unpack: [A1, A0, B0, B1] -> each [x, y]
-            A1, A0, B0, B1 = quad
-            A1x, A1y = float(A1[0]), float(A1[1])
-            A0x, A0y = float(A0[0]), float(A0[1])
-            B0x, B0y = float(B0[0]), float(B0[1])
-            B1x, B1y = float(B1[0]), float(B1[1])
 
-            # Joint (start) position at A0: (x, 0, y)
+            # Correct ordering
+            A0, A1, B1, B0 = quad
+
+            A0x, A0y = A0
+            A1x, A1y = A1
+            B0x, B0y = B0
+            B1x, B1y = B1
+
             row = [i, A0x, 0.0, A0y, A1x, 0.0, A1y]
 
-            # Radii (allow scaling)
             r0 = radial_scale * B0x
             r1 = radial_scale * B1x
 
@@ -247,17 +248,11 @@ def generate_cable_sites_csv_zrot_from_P(
                 psi = 2.0 * math.pi * c / n_cables
                 cosp, sinp = math.cos(psi), math.sin(psi)
 
-                # site1 at B0
-                x1 = r0 * cosp
-                y1 = r0 * sinp
-                z1 = B0y
-
-                # site2 at B1
-                x2 = r1 * cosp
-                y2 = r1 * sinp
-                z2 = B1y
-
-                row += [x1, y1, z1, x2, y2, z2]
+                row.extend([
+                    r0 * cosp, r0 * sinp, B0y,
+                    r1 * cosp, r1 * sinp, B1y
+                ])
 
             w.writerow(row)
+
     return csv_path
