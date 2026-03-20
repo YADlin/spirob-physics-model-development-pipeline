@@ -32,7 +32,7 @@ class MJCFConfig:
     joint_stiffness: float = 0.2
     beta: float = 1.03   # beta > 1 → decreasing stiffness/damping along chain
     motor_gear: float = 1.0
-    ctrl_range: Tuple[float, float] = (-5.0, 0.0)
+    ctrl_range: Tuple[float, float] = (-10.0, 0.0)
     tendon_width: float = 0.0006
     tendon_inward_shift: float = 0.0015
     phi_deg: float = 5.7
