@@ -1,8 +1,8 @@
 {
-  "L": 0.21,
-  "d_tip": 0.008,
+  "L": 0.22628,
+  "d_tip": 0.007139,
   "phi_deg": 6.3,
-  "Delta_theta_deg": 30,
+  "Delta_theta_deg": 30.78,
   "n_cables": 3,
   "tendon_inward_shift": 0.0015,
   "show_preview": true,
@@ -14,7 +14,7 @@
     "robot_pos": [
       0,
       0,
-      0.22
+      0.22628
     ],
     "robot_quat": [
       0,
