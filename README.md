@@ -65,7 +65,13 @@ Flags can be combined: `python build.py --nlobe --safe --no-preview`
 ├── README.md
 └── .gitignore
 ```
-
+Secondary Helper functions:
+add_touch_sensor.py
+  - Helps to add sensors on the spirob surface between the tendon sites. Needs the spirob_physics_model.xml to be already generated.
+  - The touch sensors are can also be placed at user defined location on the links of choice.
+2_cable_touch_debug.py
+  - Can be used for monitoring touch detection for the 2 cable model, shows a live graph of when the touch is dectected at sensor of desire.
+  - 
 Generated outputs (not committed):
 
 ```
