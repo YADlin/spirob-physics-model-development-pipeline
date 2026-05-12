@@ -17,6 +17,41 @@ PLOT_EVERY = 20           # redraw plot every N sim steps
 SAMPLE_EVERY = 3          # sample sensor every N sim steps
 # =========================================================
 
+# ---------------- Keyboard ----------------
+pressed_keys = set()
+
+def is_ctrl_pressed():
+
+    return (
+        keyboard.Key.ctrl in pressed_keys
+        or keyboard.Key.ctrl_l in pressed_keys
+        or keyboard.Key.ctrl_r in pressed_keys
+    )
+
+def on_press(key):
+
+    try:
+        pressed_keys.add(key.char.lower())
+
+    except AttributeError:
+        pressed_keys.add(key)
+
+def on_release(key):
+
+    try:
+        pressed_keys.discard(key.char.lower())
+
+    except AttributeError:
+        pressed_keys.discard(key)
+
+listener = keyboard.Listener(
+    on_press=on_press,
+    on_release=on_release
+)
+
+listener.start()
+
+
 # -------- Load model --------
 model = mj.MjModel.from_xml_path(XML_PATH)
 data = mj.MjData(model)
@@ -144,40 +179,6 @@ fig.suptitle(
     fontsize=14
 )
 
-# ---------------- Keyboard ----------------
-pressed_keys = set()
-reload_requested = False
-
-def on_press(key):
-
-    global reload_requested
-
-    try:
-        pressed_keys.add(key.char)
-
-    except AttributeError:
-        pressed_keys.add(key)
-
-    if (
-        keyboard.Key.ctrl in pressed_keys
-        and 'l' in pressed_keys
-    ):
-        reload_requested = True
-
-def on_release(key):
-
-    try:
-        pressed_keys.discard(key.char)
-
-    except AttributeError:
-        pressed_keys.discard(key)
-
-listener = keyboard.Listener(
-    on_press=on_press,
-    on_release=on_release
-)
-
-listener.start()
 
 # ---------------- Controls ----------------
 nominal_length = 0.22
@@ -201,10 +202,6 @@ with launch_passive(model, data) as viewer:
 
     while viewer.is_running():
 
-        if reload_requested:
-            print("Reloading model...")
-            break
-
         # -------- Controls --------
         if keyboard.Key.left in pressed_keys:
             slider -= step_size
@@ -214,24 +211,24 @@ with launch_passive(model, data) as viewer:
 
         if (
             keyboard.Key.up in pressed_keys
-            and keyboard.Key.ctrl not in pressed_keys
+            and not is_ctrl_pressed()
         ):
             delta0 += step_size
 
         if (
             keyboard.Key.down in pressed_keys
-            and keyboard.Key.ctrl not in pressed_keys
+            and not is_ctrl_pressed()
         ):
             delta0 -= step_size
 
         if (
-            keyboard.Key.ctrl in pressed_keys
+            is_ctrl_pressed()
             and keyboard.Key.up in pressed_keys
         ):
             delta1 += step_size
 
         if (
-            keyboard.Key.ctrl in pressed_keys
+            is_ctrl_pressed()
             and keyboard.Key.down in pressed_keys
         ):
             delta1 -= step_size
