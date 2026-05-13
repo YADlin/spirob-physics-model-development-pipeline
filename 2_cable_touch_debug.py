@@ -56,6 +56,13 @@ listener.start()
 model = mj.MjModel.from_xml_path(XML_PATH)
 data = mj.MjData(model)
 
+# -------- Validate actuator count --------
+if model.nu != 2:
+    raise ValueError("Model must have exactly 2 actuators.")
+
+if model.ntendon != 2:
+    raise ValueError("Model must have exactly 2 tendons.")
+
 # -------- Parse XML --------
 tree = ET.parse(XML_PATH)
 
@@ -304,7 +311,7 @@ with launch_passive(model, data) as viewer:
 
         viewer.sync()
 
-        time.sleep(1/60)
+        time.sleep(1/120)
 
         step += 1
 
