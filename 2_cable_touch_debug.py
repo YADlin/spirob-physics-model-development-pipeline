@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 from collections import defaultdict
 from pynput import keyboard
 
-XML_PATH = r'./spirob_physics_model_with_touch_sensor.xml'
+XML_PATH = r'./scene/spirob_physics_model_with_touch_sensor.xml'
 
 # ====================== USER CONFIG ======================
 SELECTED_LINKS = [6, 7]   # [] = all links
@@ -252,7 +252,10 @@ with launch_passive(model, data) as viewer:
         )
 
         # -------- Physics Step --------
-        mj.mj_step(model, data)
+        physics_steps_per_frame = 50
+
+        for _ in range(physics_steps_per_frame):
+            mj.mj_step(model, data)
 
         # ==================================================
         # FAST SENSOR UPDATE
@@ -301,7 +304,7 @@ with launch_passive(model, data) as viewer:
 
         viewer.sync()
 
-        time.sleep(0.001)
+        time.sleep(1/60)
 
         step += 1
 
