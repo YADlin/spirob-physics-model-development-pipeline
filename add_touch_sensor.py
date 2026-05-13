@@ -3,7 +3,7 @@
 import xml.etree.ElementTree as ET
 import numpy as np
 
-INPUT_FILE = r".\spirob_physics_model.xml"
+INPUT_FILE = r".\scene\spirob_scene_base.xml"
 OUTPUT_FILE = r".\scene\spirob_physics_model_with_touch_sensor.xml"
 
 # ====================== CONFIGURATION ======================
@@ -30,6 +30,23 @@ def parse_site_pos(site_elem):
     pos_str = site_elem.get("pos", "0 0 0")
     return np.array([float(x) for x in pos_str.split()])
 
+def indent_xml(elem, level=0):
+
+    indent = "\n" + level * "    "
+
+    if len(elem):
+
+        if not elem.text or not elem.text.strip():
+            elem.text = indent + "    "
+
+        for child in elem:
+            indent_xml(child, level + 1)
+
+        if not child.tail or not child.tail.strip():
+            child.tail = indent
+
+    if level and (not elem.tail or not elem.tail.strip()):
+        elem.tail = indent
 
 def main():
     tree = ET.parse(INPUT_FILE)
@@ -112,8 +129,28 @@ def main():
 
             total_sensors += 1
 
+    # root.append(sensor_elem)
+    # tree.write(OUTPUT_FILE, encoding="utf-8", xml_declaration=True)
+    
+    # Remove old sensor block if present
+    old_sensor = root.find("sensor")
+
+    if old_sensor is not None:
+        root.remove(old_sensor)
+        
+    # Add sensor block to root
     root.append(sensor_elem)
-    tree.write(OUTPUT_FILE, encoding="utf-8", xml_declaration=True)
+
+    # Apply indentation to entire XML tree
+    indent_xml(root)
+
+    # Write formatted XML
+    tree.write(
+        OUTPUT_FILE,
+        encoding="utf-8",
+        xml_declaration=True
+    )
+
 
     print(f"✅ Done!")
     print(f"Links processed     : {processed_links}")
