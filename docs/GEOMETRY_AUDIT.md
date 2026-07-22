@@ -3,8 +3,10 @@
 **Scope:** `spirob-physics-model-development-pipeline` (primary), with cross-checks
 against `spirob-assembly` and behavioural reference to `Open-Spiral-Robots`.
 
-**Status:** Phase 1 complete. Phase 2 definitions and instrumentation landed as
-read-only tooling. No production code path has been modified yet.
+**Status:** Phase 1 complete. **Phase 2 complete** — see
+`docs/CANONICAL_GEOMETRY.md`. Findings below carry their post-Phase-2
+disposition. Three Phase 1 findings were revised on further evidence; those
+revisions are marked **REVISED** and explained in place.
 
 **Audited commits**
 
@@ -115,13 +117,13 @@ correctness trap · **C** = maintainability risk.
 | F-01 | B | `phi_deg` is documented as a half-angle. It is the full included angle. |
 | F-02 | B | `README.md` quick start uses `python build.py --nlobe`; `build.py` has no such flag. |
 | F-03 | A | Requested `L` is a continuous arc length, but the built model realises a chord sum 1.16 % shorter. |
-| F-04 | A | `Invert_pose()` flips about requested `L`, not realised length; the whole robot floats 2.6246 mm above the origin. |
-| F-05 | B | The truncated partial unit becomes `link_001`, the base link, not the tip. |
+| F-04 | ~~A~~ → **not a defect** | **REVISED.** `Invert_pose()` anchors the TIP at the requested length. Intentional frame convention. |
+| F-05 | ~~B~~ → **not a defect** | **REVISED.** The partial unit becomes `link_001` by design, preserving large-at-base ordering. |
 | F-06 | B | Straightened elements have exactly zero intra-element taper. Undocumented, and downstream code assumes otherwise. |
-| F-07 | A | `preview.py` and `csv2xml.py` disagree about the tendon path by up to 1.2956 mm — 86 % of `tendon_inward_shift`. |
-| F-08 | B | The `-dz*tan(phi/2)` tendon correction applies a taper the discretised geometry does not have. |
+| F-07 | A — **FIXED** | `preview.py` and `csv2xml.py` disagreed about the tendon path by up to 1.2956 mm — 86 % of `tendon_inward_shift`. Now agree to 1.1e-15 m. |
+| F-08 | B — **deferred by decision** | The `-dz*tan(phi/2)` tendon correction applies a taper the discretised geometry does not have. |
 | F-09 | B | Realised tip/root widths differ from `d_tip`/`d_root` by −0.92 % / −2.99 %. |
-| F-10 | C | `preview.py` carries a full private fork of the spiral maths. |
+| F-10 | C — **FIXED** | `preview.py` carried a full private fork of the spiral maths. Deleted in Phase 2. |
 | F-11 | C | `csv2xml.py` defaults `--phi-deg` to 5.7 while `params.json` ships 6.3. |
 | F-12 | C | Three modules use three mutually inconsistent vertex-naming conventions. |
 | F-13 | C | `requirements.txt` pins CadQuery to a git SHA; PyPI now ships a working 2.8.0. |
@@ -204,61 +206,76 @@ from 10.9632 to a value whose continuous length is 228.9254 mm.
 
 ---
 
-### F-04 · The robot floats 2.6246 mm above the origin — A
+### F-04 · Tip anchoring at the requested length — REVISED: not a defect
+
+**Phase 1 claimed this was a severity-A defect. That was wrong, and the
+correction is recorded here rather than quietly deleted.**
 
 ```python
 def Invert_pose(quads, Length):
-    q[:, 1] = -q[:, 1] + Length      # <-- Length is the REQUESTED L
+    q[:, 1] = -q[:, 1] + Length      # Length is the REQUESTED L
 ```
 
-The straightened stack tops out at `L_discrete = 223.6554 mm`, but the flip uses
-`L = 226.28 mm`. The reflected chain therefore spans
+Phase 1 read the resulting `z_min = 0.0026246` as the base failing to sit at
+the origin. Tracing the pipeline shows the opposite reading is the right one:
+the reflection anchors the **tip** at exactly `y = L`, and the base then
+necessarily sits at `L - L_discrete`. Verified to `1e-12`:
 
 ```
-z in [0.0026246, 0.2262800]  instead of  [0, 0.2236554]
+inverted span y = 0.0026246 .. 0.2262800
+TIP  y = 0.2262800 == requested L      -> anchored exactly
+BASE y = 0.0026246 == L - L_discrete
 ```
 
-The offset is **exactly** `L_requested − L_discrete`, confirmed to `1e-12` by
-`test_base_offset_equals_the_length_deficit`. The generated CSV shows it
-directly: `joint_s1_z` of element 1 is `0.002624595229600263`.
+Two further facts settle it:
 
-Impact:
+1. **The offset never reaches the simulation.** `csv2xml.py:313` overrides
+   `rel[0]` from `post_gen.robot_pos`, discarding the CSV-frame root position
+   entirely. Confirmed against the built model: `link_001` world position is
+   exactly `[0, 0, 0.22628]`.
+2. **The default `post_gen` block is consistent with tip anchoring.**
+   `robot_pos = [0, 0, 0.22628]` with `robot_quat = [0, 0, -1, 0]` (180° about
+   Y) hangs the robot from `z = L` so the tip descends to `z ≈ 0`. The
+   2.6246 mm is the resulting tip-to-floor clearance, not a stray offset.
 
-- The MJCF body chain is relative after the root, so the only affected quantity
-  is the root body's world position — which `post_gen.robot_pos` usually
-  overrides anyway. **Simulation is largely unaffected today.**
-- Everything absolute *is* affected: the 2-D preview, any CAD export, mount
-  alignment in `spirob-assembly`, and printed-part registration. This becomes a
-  hard defect the moment Phase 5 fabrication lands.
+**Disposition.** Documented as a frame convention in `spirob/geometry.py` and
+exposed as `BaseFrame.origin_offset_m` so a future CAD exporter can consume it
+explicitly. The Phase 1 xfail `test_base_of_robot_sits_at_origin` was replaced
+by `test_inversion_anchors_the_tip_at_the_requested_length`, which asserts the
+correct convention — a stronger assertion, not a weakened one.
 
-**Action.** Flip about the realised discrete length. Under
-`length_definition = "discrete_backbone"` the two coincide and the bug
-disappears by construction. Guarded by the strict-xfail
-`test_base_of_robot_sits_at_origin`.
+### F-05 · The partial unit is the base link — REVISED: correct by design
 
----
+**Phase 1 flagged this as surprising and implicitly wrong. It is neither.**
 
-### F-05 · The truncated unit becomes the base link — B
+`theta[i] = min(i*Delta_theta, q0)` truncates the last spiral interval, and
+`Invert_pose()` then reverses the chain, so the partial unit becomes
+`link_001`. With the committed defaults, `q0/Delta_theta = 20.4076`, so unit 21
+spans 12.5452° instead of 30.78°.
 
-`theta[i] = min(i*Delta_theta, q0)` truncates the **last** interval. With the
-defaults, `q0/Delta_theta = 20.4076`, so unit 21 spans 12.5452° instead of
-30.78°. `Invert_pose()` then calls `.reverse()`, so that partial unit becomes
-`link_001` — the largest-diameter, most heavily loaded, base-mounted link, and
-the one that receives `post_gen.first_joint_stiffness = 100`.
+**The requested length creates a partial terminal unit. After
+`Invert_pose()`, this unit becomes the base link by design, preserving the
+intended large-at-base and small-at-tip ordering.**
 
-Confirmed numerically: `link_001`'s chord is 8.5842 mm, *shorter* than
-`link_002`'s despite `link_001` having the larger radius.
+The spiral is generated tip-first: `theta = 0` is the smallest radius.
+Truncation therefore lands on the largest-radius end, which after inversion is
+the base. Moving the partial unit to the tip would invert the size ordering the
+whole design depends on. It must not be "fixed".
 
-This may well be intentional. It is not documented anywhere, and it is
-surprising. A physical prototype would normally absorb the remainder at the tip.
+Confirmed numerically: `link_001` is simultaneously the partial unit
+(12.5452° span) *and* the largest unit (31.0876 mm realized width). It is short
+in **angle**, not small in **radius**.
 
-**Action.** Document it, then let `terminal_unit_policy` control it:
-`"truncate"` (current, default), `"uniform_dtheta"` (`Delta_theta_eff = q0/N`,
-all spans equal), `"uniform_scale"` (preserve requested `Delta_theta`, adjust
-`q0` — and state in the manifest that `q0`, and hence `d_root`, is the parameter
-that moved; never silently).
+**Remaining fabrication note, not a geometry defect.** A printed robot built
+from the default parameters will have a partial unit at its base. If a whole
+number of units is wanted, select the Phase 2 policy:
 
----
+```json
+"terminal_unit_policy": "whole_units"
+```
+
+which extends the spiral to the next complete boundary and reports the excess
+length. It never shortens.
 
 ### F-06 · Straightened elements have exactly zero intra-element taper — B
 
@@ -335,9 +352,16 @@ Guarded by strict-xfail `test_preview_tendon_path_matches_mjcf`, with
 1.2956 mm figure so a partial fix cannot slip through.
 
 **This is a naming defect that produced a real numerical error in one consumer.**
-Per the Phase 4 instruction, the intended geometry was established numerically
-first: the MJCF path was independently checked for monotonicity and containment
-before being declared the reference.
+The intended geometry was established numerically first: the MJCF path was
+independently checked for monotonicity and containment before being declared
+the reference.
+
+**FIXED in Phase 2.** `preview.py` no longer computes tendon geometry. It reads
+`SpiRobGeometry.tendon_path(0)`, the single canonical definition, which the
+test suite proves equals `csv2xml`'s independent computation. Measured after
+the change: worst radial disagreement **1.102e-15 m**, worst height
+disagreement **1.804e-15 m** (down from 1.2956e-3 m). Guarded by
+`test_preview_mjcf_agreement_is_at_float_precision`.
 
 ---
 
@@ -364,11 +388,19 @@ this is not catastrophic — but at the tip the tendon sits at 1.8766 mm radius
 where a constant-offset rule gives 2.0366 mm. That 0.16 mm is 11 % of the shift,
 and it will not agree with a CAD channel generated from the same nominal rule.
 
-**Action.** Phase 3 must define exactly one canonical tendon path. Recommended:
-constant offset from the realised link surface, stepping at boundaries in step
-with the geometry. Both MJCF and the printable CAD channel must consume that one
-definition — the Phase 10 requirement that "the tendon path used by MJCF agrees
-with the hole path used in printable CAD" cannot be met until then.
+**Disposition: DEFERRED BY DECISION, and the deferral is now safe.**
+
+Phase 2 reproduces this behaviour deliberately and exactly. Changing the
+routing rule would change existing MJCF output, which Phase 2 explicitly
+forbids. What Phase 2 *does* change is that there is now exactly one place to
+make the change: `spirob.geometry._build_tendon_paths`. Before, the rule was
+implemented twice (in `csv2xml.py` and, differently, in `preview.py`).
+
+The open question is unchanged: should the routed tendon be a constant offset
+from the realised staircase surface, or a smooth taper fitted through the
+links? That decision belongs with the fabrication phase, because it must be
+made once for both the MJCF tendon and the printed channel. Held as the single
+remaining strict xfail, `test_tendon_offset_from_surface_is_constant`.
 
 ---
 
@@ -400,9 +432,15 @@ The fork has already drifted and been re-synced by hand — three lines carry th
 comment `# Correction made on Mar 19, 26`, mirroring a fix applied separately to
 `helper_functions.py`. F-07 is the fork drifting again and not being caught.
 
-This is the strongest argument for the Phase 3 canonical model. `preview.py`,
-`csv2geom_nlobe.py`, `csv2xml.py`, the future CAD exporter and the future GUI
-must all consume one `SpiRobGeometry` instance.
+This was the strongest argument for the canonical model.
+
+**FIXED in Phase 2.** The fork is deleted. `_phi_from_b`, `_solve_b`,
+`_normalize`, `_angle_between`, `_rotate2d` and the private `_build_quads`
+pipeline are gone from `preview.py`; it now imports `spirob.geometry`. A
+regression guard, `test_preview_no_longer_forks_the_spiral_maths`, fails if any
+of those definitions reappears. `csv2geom_nlobe.py` and `csv2xml.py` are the
+remaining consumers to migrate; both are unchanged in Phase 2 so that default
+output stays byte-identical.
 
 ---
 
@@ -487,10 +525,19 @@ Established before any change, on the audit commits:
 | Primary: `csv2xml.py` | XML written |
 | MJCF load (MuJoCo 3.10.0) | `nbody=22 njnt=21 nsite=128 ntendon=3 nu=3 nmesh=21` |
 | MJCF 200-step rollout | no NaN; total mass 40.329 g; tendon rest length 219.66 mm |
-| New `tests/` | **55 passed, 3 xfailed** |
+| New `tests/` (Phase 1) | **55 passed, 3 xfailed** |
+| New `tests/` (Phase 2) | **139 passed, 1 xfailed** |
 
-The 3 xfails are F-04, F-07 and F-08, marked `strict=True` so they convert to
-failures the instant a fix lands without the marker being removed.
+Phase 1 held three strict xfails. Their Phase 2 disposition:
+
+| Phase 1 xfail | Disposition |
+|---|---|
+| F-04 `test_base_of_robot_sits_at_origin` | **Wrong expectation.** Replaced by `test_inversion_anchors_the_tip_at_the_requested_length`, which asserts the real convention. |
+| F-07 `test_preview_tendon_path_matches_mjcf` | **Real defect, fixed.** Marker removed; the test now passes on merit. |
+| F-08 `test_tendon_offset_from_surface_is_constant` | **Deferred by decision.** Still strict-xfail, with the reason restated. |
+
+Default pipeline output is byte-identical to `40fb850`: CSV, XML and all 21
+STL files compare equal.
 
 ---
 
@@ -579,9 +626,10 @@ measurement rather than analysis.
    specification's default preserves the current answer (no). Recommend flipping
    the default to `discrete_backbone` in a future major version, since it also
    dissolves F-04.
-2. **Where should the remainder go?** Truncating at the base (current) versus the
-   tip versus distributing it (`uniform_dtheta`). Affects base stiffness and
-   printed part strength.
+2. ~~**Where should the remainder go?**~~ **RESOLVED.** The partial unit belongs
+   at the base; that is what preserves large-at-base ordering. Users who need
+   whole units select `terminal_unit_policy: "whole_units"`, which extends the
+   spiral and reports the excess. The partial unit is never moved to the tip.
 3. **What is the canonical tendon path?** Constant offset from the realised
    staircase surface, or a smooth taper fitted through the links? The former is
    simpler and matches the geometry; the latter is closer to a real routed

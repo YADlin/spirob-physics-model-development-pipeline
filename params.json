@@ -3,6 +3,7 @@
   "d_tip": 0.007139,
   "phi_deg": 6.3,
   "Delta_theta_deg": 30.78,
+  "terminal_unit_policy": "exact_requested_length",
   "n_cables": 3,
   "tendon_inward_shift": 0.0015,
   "show_preview": true,

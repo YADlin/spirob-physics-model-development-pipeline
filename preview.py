@@ -24,129 +24,86 @@ from matplotlib.widgets import CheckButtons
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  Geometry helpers  (duplicated lightly so preview.py is self-contained)
+#  Canonical geometry adapter
+#
+#  preview.py previously carried a private fork of the spiral maths
+#  (_phi_from_b, _solve_b, _normalize, _angle_between, _rotate2d and a
+#  reimplementation of the spiral -> straighten -> invert pipeline). That fork
+#  drifted: it unpacked each quad as (A1, A0, B0, B1) while the CSV writer
+#  unpacked the same array as (A0, A1, B1, B0), so the preview anchored the
+#  tendon taper correction at the wrong end of every link and mis-drew the
+#  cable by up to 1.2956 mm — 86 % of tendon_inward_shift. See
+#  docs/GEOMETRY_AUDIT.md F-07 and F-10.
+#
+#  The fork is gone. Everything below reads spirob.geometry, which is the one
+#  authoritative definition shared with the CSV writer and the MJCF writer.
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _phi_from_b(b):
-    e = math.exp(2 * math.pi * b)
-    return 2.0 * math.atan2(b * (e - 1.0), math.sqrt(1.0 + b * b) * (e + 1.0))
+from spirob.geometry import from_params as _canonical_from_params
 
-def _solve_b(phi_target, lo=1e-6, hi=2.0):
-    f = lambda b: _phi_from_b(b) - phi_target
-    flo, fhi = f(lo), f(hi)
-    for _ in range(50):
-        if flo * fhi <= 0:
-            break
-        hi *= 1.5; fhi = f(hi)
-    else:
-        return max(1e-6, math.tan(phi_target / 2.0))
-    for _ in range(120):
-        mid = 0.5 * (lo + hi); fmid = f(mid)
-        if abs(fmid) < 1e-14 or (hi - lo) < 1e-14:
-            return mid
-        if flo * fmid <= 0:
-            hi, fhi = mid, fmid
-        else:
-            lo, flo = mid, fmid
-    return 0.5 * (lo + hi)
+_GEOM_CACHE = {}
 
-def _normalize(v):
-    n = np.linalg.norm(v); return v / n if n > 0 else v
 
-def _angle_between(v1, v2):
-    return np.arccos(np.clip(np.dot(_normalize(v1), _normalize(v2)), -1, 1))
+def _geometry(params):
+    """Canonical geometry for a params dict, memoised on dict identity."""
+    entry = _GEOM_CACHE.get(id(params))
+    if entry is None or entry[0] is not params:
+        entry = (params, _canonical_from_params(params))
+        _GEOM_CACHE[id(params)] = entry
+    return entry[1]
 
-def _rotate2d(pts, angle):
-    R = np.array([[math.cos(angle), -math.sin(angle)],
-                  [math.sin(angle),  math.cos(angle)]])
-    return pts @ R.T
 
 def _build_quads(params):
-    """Replicate the full spiral → straighten → invert pipeline from params dict."""
-    L               = params["L"]
-    d_tip           = params["d_tip"]
-    phi_deg         = params["phi_deg"]
-    Delta_theta_deg = params["Delta_theta_deg"]
+    """Inverted, base-first quads from the canonical model.
 
-    phi         = math.radians(phi_deg)
-    delta_theta = math.radians(Delta_theta_deg)
-    b           = _solve_b(phi)
-    e2pb        = math.exp(2 * math.pi * b)
-    a           = d_tip / (e2pb - 1.0)
-    A           = (a / b) * math.sqrt(b ** 2 + 1) * (e2pb+1) / 2 # Correction made on Mar 19, 26 (A was off by a factor of (e2pb+1) / 2 
-    Q0          = (1.0 / b) * math.log(1.0 + L / A)
-    N           = int(math.ceil(Q0 / delta_theta))
-    theta       = np.array([min(k * delta_theta, Q0) for k in range(N + 1)])
+    Slot order is the one Invert_pose() produces and the CSV writer consumes:
 
-    r1 = (a/2) * (np.exp(2*np.pi*b) + 1) * np.exp(b * theta) # Correction made on Mar 19, 26
-    side_A = np.column_stack((r1 * np.cos(theta), r1 * np.sin(theta)))
+        quad[0] centreline, base end      quad[1] centreline, tip end
+        quad[2] inner edge, tip end       quad[3] inner edge, base end
 
-    r2 = a * np.exp(b * theta) # Correction made on Mar 19, 26
-    side_B = np.column_stack((r2 * np.cos(theta), r2 * np.sin(theta)))
-
-    # Form quads [A0, A1, B1, B0]
-    raw = [np.array([side_A[i], side_A[i+1], side_B[i+1], side_B[i]])
-           for i in range(len(theta) - 1)]
-
-    # Straighten
-    straight = []
-    q0 = raw[0].copy()
-    hv = q0[1] - q0[0]
-    v3 = np.array([hv[0], hv[1], 0.0])
-    ref = np.array([0.0, 1.0, 0.0])
-    angle = _angle_between(v3, ref)
-    if np.cross(v3, ref)[2] < 0: angle = -angle
-    q0r = _rotate2d(q0 - q0[0], angle)
-    straight.append(q0r)
-    cur = q0r[1].copy()
-    for q in raw[1:]:
-        hv = q[1] - q[0]
-        h3 = np.array([hv[0], hv[1], 0.0])
-        ang = _angle_between(h3, ref)
-        if np.cross(h3, ref)[2] < 0: ang = -ang
-        qr = _rotate2d(q - q[0], ang) + cur
-        straight.append(qr)
-        cur = qr[1].copy()
-
-    # Invert (biggest at bottom, index 0) # Correction made on Mar 19, 26
-    inv = []
-    for q in straight:
-        qi = q.copy()
-        qi[:, 1] = -qi[:, 1] + L
-        qi = np.array([qi[1], qi[0], qi[3], qi[2]])
-        inv.append(qi)
-    inv.reverse()
-    return inv   # each quad: [A1, A0, B0, B1]  (post-invert naming)
-
-
-def _tendon_path(quads, tendon_inward_shift, phi_deg):
+    quads[0] is link_001 (base, largest); quads[-1] is the tip (smallest).
+    When the requested length does not contain a whole number of nominal
+    units, quads[0] is the partial unit — correct by design.
     """
-    Return (xs, ys) arrays for the cable-0 tendon path in 2D side view.
+    return _geometry(params).inverted_quads()
 
-    B0x/B1x are negative (outer edge is on the left after straightening),
-    so we preserve the sign and shift *inward* (toward zero / the axis).
-    The inward shift and taper correction from csv2xml are replicated here
-    so the preview matches what the XML will actually use.
 
-    Path order: tip → base (s2 of tip, s1 of tip, s2 of next, s1 of next …)
+def _tendon_path(quads, tendon_inward_shift, phi_deg, params=None):
+    """Cable-0 routing path as (xs, ys) in the 2-D side view, tip -> base.
+
+    These are the canonical routed tendon points — the very same values the
+    MJCF writer's inward-shift block produces (agreement verified to 1e-15 m
+    in tests/test_canonical_geometry.py). Nothing is recomputed here.
+
+    Point order matches the MJCF <spatial> routing: for each link from tip to
+    base, s2 (tip end) then s1 (base end).
+
+    ``params`` keeps the old three-argument call sites working; when omitted
+    the geometry is recovered from the most recently built cache entry whose
+    tendon shift matches.
     """
-    half_phi = math.radians(phi_deg / 2)
+    if params is not None:
+        geo = _geometry(params)
+    else:
+        geo = None
+        for _p, cached in reversed(list(_GEOM_CACHE.values())):
+            if cached.inputs.tendon_inward_shift_m == tendon_inward_shift:
+                geo = cached
+                break
+        if geo is None:
+            raise ValueError(
+                "_tendon_path could not recover the canonical geometry; "
+                "call _tendon_path(quads, shift, phi_deg, params)")
+
+    cable0 = geo.tendon_path(0)
     xs, ys = [], []
-
-    for quad in reversed(quads):          # tip first (quads[0]=base, quads[-1]=tip)
-        A1, A0, B0, B1 = quad
-        dz   = float(B1[1] - B0[1])
-        b0x  = float(B0[0])              # raw value — negative
-        sign = -1.0 if b0x < 0 else 1.0  # direction toward axis
-
-        r0_old = abs(b0x)
-        r0_new = max(r0_old - tendon_inward_shift, 1e-6)
-        r1_new = max(r0_old - tendon_inward_shift - dz * math.tan(half_phi), 1e-6)
-
-        # restore sign so tendon sits on same side as element bodies
-        xs += [sign * r1_new, sign * r0_new]
-        ys += [float(B1[1]), float(B0[1])]
-
+    for unit in reversed(geo.units_base_to_tip):          # tip -> base
+        by_slot = {p.slot: p for p in cable0.points
+                   if p.unit_index_base_to_tip == unit.index_base_to_tip}
+        for slot in ("s2", "s1"):                          # MJCF routing order
+            pt = by_slot[slot]
+            xs.append(pt.routed_m[0])
+            ys.append(pt.routed_m[2])
     return np.array(xs), np.array(ys)
 
 
@@ -205,7 +162,7 @@ def draw_preview(
     n_elems      = len(quads)
 
     # ── Geometry pre-compute ──────────────────────────────────────────────────
-    tx, ty   = _tendon_path(quads, tendon_shift, phi_deg)
+    tx, ty   = _tendon_path(quads, tendon_shift, phi_deg, params)
     stats    = _element_stats(quads)
     all_y    = np.concatenate([q[:, 1] for q in quads])
     y_min, y_max = float(all_y.min()), float(all_y.max())

@@ -42,7 +42,7 @@ ABS_GEOM = 1e-12
 
 # Committed default parameters (params.json as of the audit commit).
 DEFAULTS = dict(L=0.22628, d_tip=0.007139, phi_deg=6.3, Delta_theta_deg=30.78,
-                n_cables=3)
+                n_cables=3, tendon_inward_shift=0.0015)
 
 # Reference constants for DEFAULTS, from the Phase 1 specification.
 REF = dict(
@@ -276,13 +276,22 @@ def test_helper_solve_b_matches_reference_inverter():
 
 
 def test_audit_manifest_shape():
-    m = audit(DEFAULTS)
-    assert m.discretization["n_units"] == 21
-    assert m.dimensions["continuous_arc_length"] == pytest.approx(DEFAULTS["L"], rel=1e-12)
-    assert m.dimensions["discrete_backbone_length"] == pytest.approx(
+    """The audit tool now emits the canonical model's manifest."""
+    geo = audit(DEFAULTS)
+    m = geo.to_manifest()
+    assert m["schema_version"] == "2.0"
+    assert m["lengths"]["n_units_total"] == 21
+    assert m["lengths"]["n_complete_units"] == 20
+    assert m["lengths"]["has_partial_unit"] is True
+    assert m["lengths"]["effective_continuous_length_m"] == pytest.approx(
+        DEFAULTS["L"], rel=1e-12)
+    assert m["lengths"]["discrete_chord_length_m"] == pytest.approx(
         REF["discrete_backbone_length"], abs=5e-7)
-    assert m.discretization["terminal_unit_truncated"] is True
-    assert len(m.units) == 21
+    assert len(m["units"]) == 21
+    assert m["units"][0]["link_name"] == "link_001"
+    assert m["units"][0]["is_partial"] is True          # base, by design
+    assert m["units"][-1]["is_partial"] is False        # tip
+    assert m["inputs"]["terminal_unit_policy"] == "exact_requested_length"
 
 
 def test_committed_params_json_still_matches_fixture():

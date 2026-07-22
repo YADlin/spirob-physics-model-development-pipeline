@@ -18,3 +18,17 @@ meshes/
 # Python
 *.pyo
 venv/
+
+# Phase 2: build manifests and audit output
+build/
+build_manifest.json
+
+# Phase 2: local environment / tooling files that are not part of the project.
+# Listed explicitly so they cannot be committed by accident.
+.python-version
+pyproject.toml
+uv.lock
+main.py
+
+# Test cache
+.pytest_cache/

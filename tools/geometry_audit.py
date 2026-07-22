@@ -188,198 +188,140 @@ def solve_q0_for_discrete_length(
 
 
 # ══════════════════════════════════════════════════════════════════════════
-#  Report structures
+#  Reporting — delegates to the canonical geometry model
+#
+#  Everything above this line is an INDEPENDENT transcription of the published
+#  equations, kept deliberately separate from spirob/geometry.py so that the
+#  test suite can use it as an oracle. Everything below consumes the canonical
+#  model and does no geometry of its own.
 # ══════════════════════════════════════════════════════════════════════════
 
-@dataclass
-class UnitRecord:
-    index: int
-    theta_start: float
-    theta_end: float
-    angular_span: float
-    arc_length: float
-    chord_length: float
-    local_width_start: float
-    local_width_end: float
-    realized_width: float          # width the straightening step actually produces
-    scale_ratio: Optional[float]   # width_i / width_{i-1}
+from spirob.geometry import (  # noqa: E402
+    SpiRobGeometry, TerminalUnitPolicy, Tolerances, from_params,
+)
 
 
-@dataclass
-class BuildManifest:
-    schema_version: str = "1.0"
-    params: dict = field(default_factory=dict)
-    analytical: dict = field(default_factory=dict)
-    dimensions: dict = field(default_factory=dict)
-    discretization: dict = field(default_factory=dict)
-    units: List[dict] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
+def audit(params: dict,
+          terminal_unit_policy: str = "exact_requested_length",
+          tolerances: Optional[Tolerances] = None) -> SpiRobGeometry:
+    """Build the canonical geometry for ``params`` under the given policy."""
+    p = dict(params)
+    p["terminal_unit_policy"] = terminal_unit_policy
+    return from_params(p, tolerances=tolerances)
 
 
-def _chord_offset_factor(P0: np.ndarray, P1: np.ndarray) -> float:
-    """Perpendicular distance from the origin to the chord line P0->P1.
-
-    The straightening step maps the inner edge to a constant lateral offset
-    of (1-k)*this distance, with k = 2/(E+1); see GEOMETRY_AUDIT.md F-06.
-    """
-    e = P1 - P0
-    e = e / np.linalg.norm(e)
-    # 2-D cross product magnitude
-    return abs(e[0] * (-P0[1]) - e[1] * (-P0[0]))
-
-
-def audit(params: dict, length_definition: str = "continuous_arc",
-          terminal_unit_policy: str = "truncate") -> BuildManifest:
-    L = float(params["L"])
-    d_tip = float(params["d_tip"])
-    phi = math.radians(float(params["phi_deg"]))
-    dth = math.radians(float(params["Delta_theta_deg"]))
-
-    b = b_of_phi(phi)
-    E = E_of(b)
-    a = a_of(d_tip, b)
-
-    warnings: List[str] = []
-    if length_definition == "continuous_arc":
-        q0 = q0_from_arc_length(L, a, b)
-    elif length_definition == "discrete_backbone":
-        q0 = solve_q0_for_discrete_length(L, a, b, dth, terminal_unit_policy)
-    else:
-        raise ValueError(f"unknown length_definition {length_definition!r}")
-
-    theta = theta_samples(q0, dth, terminal_unit_policy)
-    C = centerline_points(theta, a, b)
-    chords = np.linalg.norm(np.diff(C, axis=0), axis=1)
-    L_cont = arc_length(q0, a, b)
-    L_disc = float(chords.sum())
-
-    k = 2.0 / (E + 1.0)
-    widths = local_width(theta, a, b)
-    rc_vals = r_c(theta, a, b)
-
-    units: List[UnitRecord] = []
-    prev_w = None
-    for i in range(len(theta) - 1):
-        realized = (1.0 - k) * _chord_offset_factor(C[i], C[i + 1]) * 2.0
-        units.append(UnitRecord(
-            index=i,
-            theta_start=float(theta[i]),
-            theta_end=float(theta[i + 1]),
-            angular_span=float(theta[i + 1] - theta[i]),
-            arc_length=float(arc_length(theta[i + 1], a, b) - arc_length(theta[i], a, b)),
-            chord_length=float(chords[i]),
-            local_width_start=float(widths[i]),
-            local_width_end=float(widths[i + 1]),
-            realized_width=float(realized),
-            scale_ratio=None if prev_w is None else float(realized / prev_w),
-        ))
-        prev_w = realized
-
-    spans = np.diff(theta)
-    truncated = bool(abs(spans[-1] - dth) > 1e-12)
-    if truncated:
-        warnings.append(
-            f"terminal unit is truncated: span {math.degrees(spans[-1]):.4f} deg "
-            f"vs nominal {math.degrees(dth):.4f} deg. Under Invert_pose() this "
-            f"partial unit becomes link_001 (the BASE link), not the tip."
-        )
-    rel_err = (L_disc - L) / L
-    if abs(rel_err) > 1e-3:
-        warnings.append(
-            f"discrete backbone length differs from requested L by "
-            f"{rel_err * 100:+.4f}% ({(L_disc - L) * 1e3:+.4f} mm)."
-        )
-
-    m = BuildManifest()
-    m.params = {"L": L, "d_tip": d_tip, "phi_deg": params["phi_deg"],
-                "Delta_theta_deg": params["Delta_theta_deg"],
-                "n_cables": params.get("n_cables"),
-                "length_definition": length_definition,
-                "terminal_unit_policy": terminal_unit_policy}
-    m.analytical = {"a": a, "b": b, "E": E, "q0": q0,
-                    "phi_rad": phi, "phi_deg_full_included": math.degrees(phi),
-                    "beta_nominal": beta_of(b, dth)}
-    m.dimensions = {
-        "requested_length": L,
-        "continuous_arc_length": L_cont,
-        "discrete_backbone_length": L_disc,
-        "relative_length_error": rel_err,
-        "tip_width_nominal": d_tip,
-        "root_width_nominal": d_root_of(d_tip, b, q0),
-        "tip_width_realized": units[0].realized_width,
-        "root_width_realized": units[-1].realized_width,
-    }
-    m.discretization = {
-        "requested_delta_theta": dth,
-        "effective_delta_theta": float(np.mean(spans[:-1])) if len(spans) > 1 else float(spans[0]),
-        "n_units": len(units),
-        "terminal_unit_truncated": truncated,
-        "terminal_unit_span": float(spans[-1]),
-    }
-    m.units = [asdict(u) for u in units]
-    m.warnings = warnings
-    return m
-
-
-def _fmt(m: BuildManifest) -> str:
-    d, an, dc = m.dimensions, m.analytical, m.discretization
-    out = [
+def format_report(geo: SpiRobGeometry) -> str:
+    sp, lr, inp = geo.spiral, geo.lengths, geo.inputs
+    L = [
         "SpiRob geometry audit",
-        "=" * 62,
-        f"  b                        = {an['b']:.10f}",
-        f"  a                        = {an['a']:.10f} m",
-        f"  q0                       = {an['q0']:.10f} rad",
-        f"  phi (FULL included)      = {an['phi_deg_full_included']:.6f} deg",
-        f"  beta (nominal)           = {an['beta_nominal']:.9f}",
+        "=" * 72,
+        f"  terminal_unit_policy     = {inp.terminal_unit_policy.value}",
         "",
-        f"  requested length         = {d['requested_length'] * 1e3:10.4f} mm",
-        f"  continuous arc length    = {d['continuous_arc_length'] * 1e3:10.4f} mm",
-        f"  discrete backbone length = {d['discrete_backbone_length'] * 1e3:10.4f} mm",
-        f"  relative length error    = {d['relative_length_error'] * 100:+10.4f} %",
+        "  Spiral parameters",
+        f"    b                      = {sp.b:.10f}",
+        f"    a                      = {sp.a_m:.10f} m",
+        f"    q0 (requested)         = {sp.q0_requested_rad:.10f} rad",
+        f"    q0 (effective)         = {sp.q0_rad:.10f} rad",
+        f"    phi (FULL included)    = {inp.phi_deg_full_included:.6f} deg",
+        f"    beta (nominal)         = {sp.beta_nominal:.9f}",
         "",
-        f"  tip width  nominal/realized = {d['tip_width_nominal'] * 1e3:8.4f} / "
-        f"{d['tip_width_realized'] * 1e3:8.4f} mm",
-        f"  root width nominal/realized = {d['root_width_nominal'] * 1e3:8.4f} / "
-        f"{d['root_width_realized'] * 1e3:8.4f} mm",
+        "  Lengths  (three distinct quantities)",
+        f"    requested continuous   = {lr.requested_continuous_length_m * 1e3:10.4f} mm",
+        f"    effective continuous   = {lr.effective_continuous_length_m * 1e3:10.4f} mm",
+        f"    discrete chord         = {lr.discrete_chord_length_m * 1e3:10.4f} mm",
         "",
-        f"  units                    = {dc['n_units']}",
-        f"  requested Delta_theta    = {math.degrees(dc['requested_delta_theta']):.4f} deg",
-        f"  effective Delta_theta    = {math.degrees(dc['effective_delta_theta']):.4f} deg",
-        f"  terminal unit truncated  = {dc['terminal_unit_truncated']} "
-        f"(span {math.degrees(dc['terminal_unit_span']):.4f} deg)",
+        "    unit-completion effect   (requested -> effective)",
+        f"      absolute             = {lr.completion_delta_m * 1e3:+10.4f} mm",
+        f"      relative             = {lr.completion_delta_rel * 100:+10.4f} %",
+        "    arc-vs-chord effect      (effective -> discrete)",
+        f"      absolute             = {lr.chord_deficit_m * 1e3:+10.4f} mm",
+        f"      relative             = {lr.chord_deficit_rel * 100:+10.4f} %",
+        "",
+        "  Units",
+        f"    total                  = {lr.n_units_total}",
+        f"    complete               = {lr.n_complete_units}",
+        f"    partial unit present   = {lr.has_partial_unit}",
     ]
-    if m.warnings:
-        out.append("")
-        out.append("  WARNINGS")
-        for w in m.warnings:
-            out.append(f"    ! {w}")
-    return "\n".join(out)
+    if lr.has_partial_unit:
+        L += [
+            f"    partial unit span      = {math.degrees(lr.partial_unit_span_rad):.4f} deg "
+            f"(nominal {inp.delta_theta_deg:.4f})",
+            f"    partial unit location  = {geo.units[0].link_name} (BASE, by design)",
+        ]
+    L += [
+        "",
+        "  Widths          nominal      realized",
+        f"    tip          {lr.nominal_tip_width_m * 1e3:9.4f} mm  {lr.realized_tip_width_m * 1e3:9.4f} mm",
+        f"    root         {lr.nominal_root_width_m * 1e3:9.4f} mm  {lr.realized_root_width_m * 1e3:9.4f} mm",
+        "",
+        "  Ordering (traced, not inferred)",
+        f"    {geo.units[0].link_name}  index_tip_to_base={geo.units[0].index_tip_to_base:2d}  "
+        f"realized width {geo.units[0].realized_width_m * 1e3:8.4f} mm  <- BASE, largest",
+        f"    {geo.units[-1].link_name}  index_tip_to_base={geo.units[-1].index_tip_to_base:2d}  "
+        f"realized width {geo.units[-1].realized_width_m * 1e3:8.4f} mm  <- TIP,  smallest",
+        "",
+        "  Base frame (fabrication anchor)",
+        f"    origin offset          = {geo.base_frame.origin_offset_m * 1e3:.4f} mm",
+        f"    mount plane normal     = {geo.base_frame.mount_plane_normal}",
+    ]
+    if geo.warnings:
+        L += ["", "  NOTES"]
+        for w in geo.warnings:
+            L.append(f"    * {w}")
+    return "\n".join(L)
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="SpiRob analytical/discretization audit")
+    ap = argparse.ArgumentParser(description="SpiRob canonical geometry audit")
     ap.add_argument("--params", default="params.json")
     ap.add_argument("--out", default=None, help="write the build manifest as JSON")
-    ap.add_argument("--length-definition", default="continuous_arc",
-                    choices=["continuous_arc", "discrete_backbone"])
-    ap.add_argument("--terminal-unit-policy", default="truncate",
-                    choices=["truncate", "uniform_dtheta"])
+    ap.add_argument("--policy", default=None,
+                    choices=[m.value for m in TerminalUnitPolicy],
+                    help="override terminal_unit_policy from params.json")
+    ap.add_argument("--compare-policies", action="store_true",
+                    help="report both policies side by side")
     args = ap.parse_args()
 
     with open(args.params) as f:
         params = json.load(f)
 
-    params.setdefault("length_definition", args.length_definition)
-    params.setdefault("terminal_unit_policy", args.terminal_unit_policy)
+    policy = args.policy or params.get(
+        "terminal_unit_policy", TerminalUnitPolicy.EXACT_REQUESTED_LENGTH.value)
 
-    m = audit(params,
-              length_definition=params["length_definition"],
-              terminal_unit_policy=params["terminal_unit_policy"])
-    print(_fmt(m))
+    if args.compare_policies:
+        rows = [(m.value, audit(params, m.value)) for m in TerminalUnitPolicy]
+        print("Policy comparison")
+        print("=" * 72)
+        hdr = f"{'quantity':<34}" + "".join(f"{n:>19}" for n, _ in rows)
+        print(hdr)
+        print("-" * len(hdr))
+
+        def row(label, fn, fmt="{:>19.4f}"):
+            print(f"{label:<34}" + "".join(fmt.format(fn(g)) for _, g in rows))
+
+        row("requested continuous (mm)", lambda g: g.lengths.requested_continuous_length_m * 1e3)
+        row("effective continuous (mm)", lambda g: g.lengths.effective_continuous_length_m * 1e3)
+        row("discrete chord (mm)", lambda g: g.lengths.discrete_chord_length_m * 1e3)
+        row("completion delta (mm)", lambda g: g.lengths.completion_delta_m * 1e3)
+        row("completion delta (%)", lambda g: g.lengths.completion_delta_rel * 100)
+        row("chord deficit (mm)", lambda g: g.lengths.chord_deficit_m * 1e3)
+        row("chord deficit (%)", lambda g: g.lengths.chord_deficit_rel * 100)
+        row("units total", lambda g: g.lengths.n_units_total, "{:>19d}")
+        row("complete units", lambda g: g.lengths.n_complete_units, "{:>19d}")
+        row("partial unit", lambda g: str(g.lengths.has_partial_unit), "{:>19}")
+        row("partial span (deg)", lambda g: math.degrees(g.lengths.partial_unit_span_rad))
+        row("effective q0 (rad)", lambda g: g.lengths.effective_q0_rad)
+        row("nominal root width (mm)", lambda g: g.lengths.nominal_root_width_m * 1e3)
+        row("realized root width (mm)", lambda g: g.lengths.realized_root_width_m * 1e3)
+        row("realized tip width (mm)", lambda g: g.lengths.realized_tip_width_m * 1e3)
+        return 0
+
+    geo = audit(params, policy)
+    print(format_report(geo))
     if args.out:
         os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
         with open(args.out, "w") as f:
-            json.dump(asdict(m), f, indent=2)
+            json.dump(geo.to_manifest(), f, indent=2)
         print(f"\nWrote manifest: {args.out}")
     return 0
 
