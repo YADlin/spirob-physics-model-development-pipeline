@@ -51,7 +51,7 @@ asserted by `test_module_documents_the_conventions`.
 | Link order | `units[0]` is `link_001`, the base. Matches the CSV and MJCF. |
 | Spiral order | `units_tip_to_base[0]` is `theta = 0`, the tip. |
 | Relation | Exact reverses: `link[k] = spiral[N-1-k]`. Both indices are stored on every `UnitRecord`; never infer ordering from a name. |
-| Reported lengths | Three distinct fields — see below. Arcs and chords are never conflated. |
+| Reported lengths | Three distinct fields, plus two named effects — see "The three lengths" below, and §0 of `docs/GEOMETRY_AUDIT.md`. Arcs and chords are never conflated, and partial-unit completion is never conflated with arc-versus-chord shortening. |
 | Tendon points | Defined once here, in the inverted (CSV) frame, in two stages: `attachment_m` on the surface, `routed_m` after shift and correction. |
 
 ### Field naming
@@ -87,17 +87,25 @@ at the tip.
 **When the requested length does not contain a whole number of nominal units,
 the partial unit is the last spiral interval, and after `Invert_pose()` it
 becomes `link_001`, the base link. This is correct by design and is preserved.**
-It is not an inversion error. Moving the partial unit to the tip would invert
-the size ordering the design depends on.
+It is not an inversion or ordering error. Moving the partial unit to the tip
+would invert the size ordering the design depends on.
 
-The partial unit is short in **angle**, not small in **radius**: with the
-committed defaults `link_001` spans 12.5452° yet is still the widest unit at
-31.0876 mm.
+The partial unit is partial in **angular span**, not small in **radius**: with
+the committed defaults `link_001` spans 12.5452° yet remains at the
+large-radius, wide end at 31.0876 mm. The smallest element, `link_021`, remains
+at the tip and is complete.
 
 Step 1 anchors the **tip** at exactly `y = requested_length_m`. The base
 therefore sits at `requested - discrete`, exposed as
-`BaseFrame.origin_offset_m`. This does not reach the simulation, because
-`csv2xml.py` overrides the root body position from `post_gen.robot_pos`.
+`BaseFrame.origin_offset_m`. With the committed defaults that offset is
+2.6246 mm, and it is **the continuous-arc versus discrete-chord difference** —
+the same quantity as the chord deficit below, surfacing in the frame because the
+tip is the anchored end. It is not an accidental root displacement and the
+geometry is not to be shifted by it.
+
+It does not reach the simulation either: `csv2xml.py` establishes the simulated
+root pose from `post_gen.robot_pos`, overriding the CSV-frame root position
+entirely. On the built model `link_001` sits at exactly `[0, 0, 0.22628]`.
 
 ---
 
@@ -274,7 +282,7 @@ None of these exist yet. They belong in a `fabrication` block in
 | `preview.py` | migrated — private fork deleted, tendon points shared |
 | `spirob_csv_generator.py` | not yet — still calls `helper_functions` directly |
 | `csv2geom_nlobe.py` | not yet — reads the CSV |
-| `csv2xml.py` | not yet — reads the CSV, computes routing independently |
+| `csv2xml.py` | not yet — reads the CSV, computes routing independently. Its routing rule is reproduced exactly by the canonical layer; the rule itself is still undecided (F-08) |
 | future STEP/STL exporter | will consume the canonical model from the start |
 
 `helper_functions.py` is untouched and still works. The canonical layer

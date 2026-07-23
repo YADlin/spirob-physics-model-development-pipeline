@@ -6,7 +6,18 @@ against `spirob-assembly` and behavioural reference to `Open-Spiral-Robots`.
 **Status:** Phase 1 complete. **Phase 2 complete** — see
 `docs/CANONICAL_GEOMETRY.md`. Findings below carry their post-Phase-2
 disposition. Three Phase 1 findings were revised on further evidence; those
-revisions are marked **REVISED** and explained in place.
+revisions are marked **REVISED** and explained in place. Historical wording is
+preserved and struck through rather than deleted, so the original reasoning
+stays auditable.
+
+**Phase numbering.** Two numbering schemes appear in this project's history and
+they do not line up. The original eleven-part task specification numbered the
+canonical geometry model "Phase 3", CAD "Phase 5", the GUI "Phase 8" and so on.
+The project as executed uses its own sequence: **Phase 1 = audit**,
+**Phase 2 = canonical geometry layer**, with fabrication, GUI and splitter work
+still ahead and not yet numbered. Throughout this document, unqualified "Phase
+1" and "Phase 2" mean the *project* phases. Where a reference to the original
+specification's numbering is intended, it is written as "spec Phase N".
 
 **Audited commits**
 
@@ -22,8 +33,59 @@ MIT. It was read for behavioural reference only — specifically the existence a
 rough shape of its `fabrication/splitter_generator.py` and `design-tool` feature
 set. Every equation in this document is transcribed from the task specification
 and from Wang et al. 2024, and every implementation in `tools/` was written
-against those equations. See `docs/LICENSE_PROVENANCE.md` (Phase 11) for the
-formal statement.
+against those equations. A formal `docs/LICENSE_PROVENANCE.md` is still to be
+written as part of the final deliverables; until then this note stands.
+
+---
+
+## 0. Length vocabulary
+
+Five quantities are easy to conflate and are kept strictly separate everywhere
+in this document and in `spirob/geometry.py`. Two of them are *lengths*; two are
+*effects* that relate those lengths; one is a *structural* property.
+
+| Term | Meaning | Field |
+|---|---|---|
+| **requested continuous length** | what the user asks for in `params.json` as `L`; a spiral **arc** length | `requested_continuous_length_m` |
+| **effective continuous length** | the spiral **arc** actually generated, after the terminal-unit policy has been applied | `effective_continuous_length_m` |
+| **discrete chord (backbone) length** | the sum of straightened **chords**, i.e. what the built link chain physically measures | `discrete_chord_length_m` |
+| **partial-unit completion** | the *effect* `requested -> effective`. Zero under `exact_requested_length`; positive under `whole_units` | `completion_delta_m` / `_rel` |
+| **arc-versus-chord shortening** | the *effect* `effective -> discrete`. Always negative, second order in `Delta_theta`, present under **both** policies | `chord_deficit_m` / `_rel` |
+
+```
+requested continuous length
+    |
+    |  partial-unit completion        (unit-structure effect)
+    v
+effective continuous length
+    |
+    |  arc-versus-chord shortening    (discretisation effect)
+    v
+discrete chord (backbone) length
+```
+
+The two effects have **different causes and different remedies**. Completion is
+about whether the requested length contains a whole number of nominal units, and
+is controlled by `terminal_unit_policy`. Arc-versus-chord shortening is about
+straightening curved intervals into straight links, and is controlled only by
+`Delta_theta`. Selecting `whole_units` does *not* remove the chord deficit — it
+slightly increases it, because the model is longer.
+
+The two shipped policies are:
+
+| `terminal_unit_policy` | Behaviour |
+|---|---|
+| `exact_requested_length` | **Default.** Effective length equals requested length exactly. Permits one partial unit, which after inversion is the base link. |
+| `whole_units` | Extends the spiral to the next complete nominal unit boundary. Never shortens. No partial unit. Reports the excess. |
+
+Earlier drafts of this document floated a `length_definition` parameter with
+values `continuous_arc` / `discrete_backbone`, and a `terminal_unit_policy` with
+values `truncate` / `uniform_dtheta` / `uniform_scale`. **None of those shipped.**
+Where they still appear below they are marked as superseded. Note separately that
+`tools/geometry_audit.py` retains an internal, independent reference
+implementation whose own helper argument is still spelled `truncate`; that is a
+test-oracle detail, not a user-facing policy name, and is deliberately not
+renamed so the oracle stays a genuine cross-check.
 
 ---
 
@@ -116,7 +178,7 @@ correctness trap · **C** = maintainability risk.
 |---|---|---|
 | F-01 | B | `phi_deg` is documented as a half-angle. It is the full included angle. |
 | F-02 | B | `README.md` quick start uses `python build.py --nlobe`; `build.py` has no such flag. |
-| F-03 | A | Requested `L` is a continuous arc length, but the built model realises a chord sum 1.16 % shorter. |
+| F-03 | A — **reported, by design** | Requested `L` is a continuous arc length; the built model realises a chord sum 1.16 % shorter. Now measured and reported separately as arc-versus-chord shortening. |
 | F-04 | ~~A~~ → **not a defect** | **REVISED.** `Invert_pose()` anchors the TIP at the requested length. Intentional frame convention. |
 | F-05 | ~~B~~ → **not a defect** | **REVISED.** The partial unit becomes `link_001` by design, preserving large-at-base ordering. |
 | F-06 | B | Straightened elements have exactly zero intra-element taper. Undocumented, and downstream code assumes otherwise. |
@@ -178,31 +240,47 @@ with any user scripts, and fix the README.
 
 ---
 
-### F-03 · Continuous arc length vs discrete backbone length — A
+### F-03 · Arc-versus-chord shortening — A, now measured and reported
 
-`q0` is solved so the *continuous* arc length equals `L`. The pipeline then
+`q0` is solved so the *continuous arc* length equals `L`. The pipeline then
 straightens each sampled interval as a **chord**. Chords are shorter than arcs,
-so the delivered robot is short:
+so the built chain measures less than the requested arc:
 
 | Quantity | Value |
 |---|---|
-| Requested `L` | 226.2800 mm |
-| Continuous arc length | 226.2800 mm |
-| Discrete backbone length | **223.6554 mm** |
-| Absolute deficit | 2.6246 mm |
-| Relative error | **−1.1599 %** |
+| Requested continuous length | 226.2800 mm |
+| Effective continuous length | 226.2800 mm |
+| Discrete chord (backbone) length | **223.6554 mm** |
+| Arc-versus-chord shortening | −2.6246 mm |
+| Relative | **−1.1599 %** |
 
-This matches the specification's expected 223.6554 mm exactly. The error is
+This matches the specification's expected 223.6554 mm exactly. The effect is
 second order in `Delta_theta`; `test_discrete_converges_to_continuous` confirms
 `O(Delta_theta^2)` convergence across 0.5°–60°.
 
-**Action (Phase 2).** Add `"length_definition"`, default `"continuous_arc"` so
-existing `params.json` files are bit-identical. `"discrete_backbone"` invokes
-the deterministic bracketed bisection in
-`tools/geometry_audit.solve_q0_for_discrete_length()` (explicit `tol`, explicit
-`max_iter`, raises with an actionable message on failure to bracket or
-converge). Verified: it drives the relative error to `< 1e-10`, raising `q0`
-from 10.9632 to a value whose continuous length is 228.9254 mm.
+**This is a discretisation effect, not a unit-completion effect.** Under the
+default policy the effective length equals the requested length exactly, so the
+completion delta is zero while this deficit is −2.6246 mm. The two are reported
+as separate fields and must not be summed into a single "error". See §0.
+
+**Disposition (Phase 2): reported, not silently absorbed.** The superseded
+proposal was a `length_definition` parameter with values
+`continuous_arc` / `discrete_backbone` that would have re-solved `q0` so the
+*chord sum* hit `L`. That did not ship, and deliberately so: it would change the
+spiral for every existing `params.json`. What shipped instead is measurement —
+`LengthReport` carries all three lengths and both effects, `to_manifest()`
+serialises them, and `tools/geometry_audit.py` prints them. A user who wants a
+226.28 mm backbone can now see exactly what they are getting and by how much it
+differs.
+
+The chord-solving routine still exists in `tools/geometry_audit.py` as
+`solve_q0_for_discrete_length()` (deterministic bracketed bisection, explicit
+`tol` and `max_iter`, raises on failure to bracket or converge) and remains
+covered by `tests/test_analytical.py`. It is retained as a verified reference
+implementation should a future major version choose to adopt it; it is not
+reachable from the shipped pipeline. Measured: it drives the relative error
+below `1e-10`, raising `q0` from 10.9632 to a value whose continuous arc length
+is 228.9254 mm.
 
 ---
 
@@ -227,6 +305,11 @@ TIP  y = 0.2262800 == requested L      -> anchored exactly
 BASE y = 0.0026246 == L - L_discrete
 ```
 
+**The 2.6246 mm is the continuous-arc versus discrete-chord difference** — the
+same quantity reported by F-03 as arc-versus-chord shortening, appearing here in
+the frame because the tip is the anchored end. It is **not** an accidental
+MuJoCo root displacement, and the geometry must **not** be shifted by it.
+
 Two further facts settle it:
 
 1. **The offset never reaches the simulation.** `csv2xml.py:313` overrides
@@ -244,27 +327,32 @@ explicitly. The Phase 1 xfail `test_base_of_robot_sits_at_origin` was replaced
 by `test_inversion_anchors_the_tip_at_the_requested_length`, which asserts the
 correct convention — a stronger assertion, not a weakened one.
 
+---
+
 ### F-05 · The partial unit is the base link — REVISED: correct by design
 
 **Phase 1 flagged this as surprising and implicitly wrong. It is neither.**
 
-`theta[i] = min(i*Delta_theta, q0)` truncates the last spiral interval, and
+`theta[i] = min(i*Delta_theta, q0)` clips the last spiral interval at `q0`, and
 `Invert_pose()` then reverses the chain, so the partial unit becomes
 `link_001`. With the committed defaults, `q0/Delta_theta = 20.4076`, so unit 21
-spans 12.5452° instead of 30.78°.
+spans 12.5452° instead of 30.78°. (This clipping is the *mechanism*. It is not a
+policy name: the shipped policy that permits it is `exact_requested_length`.)
 
 **The requested length creates a partial terminal unit. After
 `Invert_pose()`, this unit becomes the base link by design, preserving the
 intended large-at-base and small-at-tip ordering.**
 
-The spiral is generated tip-first: `theta = 0` is the smallest radius.
-Truncation therefore lands on the largest-radius end, which after inversion is
-the base. Moving the partial unit to the tip would invert the size ordering the
-whole design depends on. It must not be "fixed".
+The spiral is generated tip-first: `theta = 0` is the smallest radius. The
+clipped interval therefore lands on the largest-radius end, which after
+inversion is the base. The smallest element remains at the tip. Moving the
+partial unit to the tip would invert the size ordering the whole design depends
+on. **This is not an inversion or ordering defect and must not be "fixed".**
 
 Confirmed numerically: `link_001` is simultaneously the partial unit
-(12.5452° span) *and* the largest unit (31.0876 mm realized width). It is short
-in **angle**, not small in **radius**.
+(12.5452° span) *and* the largest unit (31.0876 mm realized width). It is
+partial in **angular span** while remaining at the **large-radius, wide end**.
+`link_021` is the smallest unit, at the tip, and is complete.
 
 **Remaining fabrication note, not a geometry defect.** A printed robot built
 from the default parameters will have a partial unit at its base. If a whole
@@ -412,9 +500,18 @@ remaining strict xfail, `test_tendon_offset_from_surface_is_constant`.
 | Root width | 32.0449 mm | 31.0876 mm | −2.99 % |
 
 A consequence of F-06: the realised width is scaled by the chord-to-radius
-sagitta factor `dist(O, chord_i)/r_c(theta_i)`, which is < 1 and shrinks as
-`Delta_theta` grows. The root is worse than the tip only because the terminal
-unit's truncation happens to reduce the effect there.
+sagitta factor `dist(O, chord_i)/r_c(theta_i)`, which is < 1 and shrinks as the
+unit's angular span grows.
+
+The root figure above is policy-dependent, which is worth stating precisely.
+Under `exact_requested_length` the base unit spans only 12.5452°, so its sagitta
+factor is 0.99966 and its realised width (31.0876 mm) is close to the nominal
+width at its own start angle. Under `whole_units` the base unit spans the full
+30.78°, the factor drops to 0.990794, and the realised root width *falls* to
+30.8119 mm even though the spiral now extends further and the nominal root width
+*rises* to 33.4726 mm. Fabrication must therefore read
+`realized_root_width_m`; `nominal_root_width_m` is the width the continuous
+spiral reaches at `q0`, which no straightened block ever realises.
 
 A user asking for a 7.139 mm tip gets 7.073 mm. Harmless in simulation;
 material for fabrication fit. Phase 6 validation must report both nominal and
@@ -472,7 +569,7 @@ own code: it documents `P[i] = [A1_i, A0_i, B0_i, B1_i]` and
 `site1: (B1x*cosψ, B1x*sinψ, B0y)` — mixing the `x` of one vertex with the `y`
 of another — while the code correctly pairs `r0` with `B0y`.
 
-**Action.** Phase 3: replace all tuple unpacking with a frozen dataclass
+**Action.** Future consumer-migration work: replace all tuple unpacking with a frozen dataclass
 carrying explicit `centerline_start` / `centerline_end` /
 `inner_start` / `inner_end` fields. No positional unpacking anywhere.
 
@@ -488,28 +585,49 @@ full CSV → 21 STL → MJCF pipeline ran green on it.
 
 ---
 
-## 3. Phase 2 definitions and instrumentation
+## 3. Instrumentation as shipped
 
-`tools/geometry_audit.py` is read-only and imports nothing from the production
-path. It already implements and reports:
+`tools/geometry_audit.py` now has two clearly separated halves.
+
+**Upper half — the reference oracle.** An independent transcription of the
+published equations, importing nothing from the production path. It is retained
+precisely so the test suite can check `spirob/geometry.py` against something
+that was not derived from it. Its internal helpers still use the exploratory
+vocabulary (`theta_samples(..., "truncate")`, `solve_q0_for_discrete_length`,
+`discrete_backbone_length`). Those are oracle-internal argument names, **not**
+user-facing policy values, and are intentionally left alone.
+
+**Lower half — reporting.** Consumes the canonical model and performs no
+geometry of its own. The Phase 1 statement that this file "is read-only and
+imports nothing from the production path" is therefore **superseded**: the
+reporting half imports `spirob.geometry`.
+
+Reported per build, via `SpiRobGeometry.to_manifest()`:
 
 ```
-requested length · continuous arc length · discrete backbone length
-relative length error · requested Delta_theta · effective Delta_theta
-number of units · terminal unit truncated · nominal beta
-per-unit actual scale ratios · tip width · root width · full taper angle
+requested continuous length · effective continuous length
+discrete chord (backbone) length
+partial-unit completion delta (absolute and relative)
+arc-versus-chord shortening (absolute and relative)
+requested Delta_theta · effective/actual per-unit angular spans
+units total · complete units · partial unit present · partial unit span
+effective q0 · nominal beta · per-unit scale ratios
+nominal and realized tip width · nominal and realized root width
+full taper angle · base-frame anchor · per-unit slit references
 ```
 
-emitted as a versioned JSON build manifest (`--out`). Discrete length is defined
-exactly as specified:
+emitted as a versioned JSON build manifest (`--out`, `schema_version` 2.0).
+Discrete chord length is defined exactly as specified:
 
 ```
 sum( norm( center_point(theta[i+1]) - center_point(theta[i]) ) )
 ```
 
-Both `length_definition` modes and both implemented `terminal_unit_policy`
-values are exercised by the test suite. `uniform_scale` is specified but not yet
-implemented — it must not ship until it declares which parameter it moves.
+Both shipped `terminal_unit_policy` values — `exact_requested_length` and
+`whole_units` — are exercised by the test suite, and
+`--compare-policies` prints them side by side. The exploratory
+`length_definition` parameter and the `uniform_dtheta` / `uniform_scale`
+policies were **not** implemented and are not planned; see §0.
 
 ---
 
@@ -541,59 +659,107 @@ STL files compare equal.
 
 ---
 
-## 5. Proposed change surface
+## 5. Change surface — status
 
-Nothing below is implemented yet. Listed for review before Phase 3 begins.
+This section was written in Phase 1 as a forward plan. It is now annotated with
+what actually landed. Rows marked **landed** are complete on
+`canonical-geometry`; the rest remain future work.
 
-### 5.1 New files (no compatibility risk)
+### 5.1 New files
 
 ```
-docs/GEOMETRY_AUDIT.md          this document
-docs/FABRICATION_PIPELINE.md    Phase 5
-docs/PARAMETER_REFERENCE.md     Phase 11
-docs/LICENSE_PROVENANCE.md      Phase 11
-docs/MIGRATION_NOTES.md         Phase 11
-tools/geometry_audit.py         landed
-spirob/geometry.py              SpiRobGeometry canonical model (Phase 3)
-spirob/tendons.py               single canonical tendon-path definition
-fabrication/                    Phase 5 CAD exporter + validator + splitter
-gui/                            Phase 8, lazy-imported
-tests/                          landed: test_analytical.py, test_conventions.py
+docs/GEOMETRY_AUDIT.md          landed  (this document)
+docs/CANONICAL_GEOMETRY.md      landed  (Phase 2)
+spirob/__init__.py              landed  (Phase 2)
+spirob/geometry.py              landed  (Phase 2) — SpiRobGeometry canonical model
+tools/geometry_audit.py         landed  (Phase 1, rewired in Phase 2)
+tests/test_analytical.py        landed  (Phase 1)
+tests/test_conventions.py       landed  (Phase 1, revised in Phase 2)
+tests/test_canonical_geometry.py landed (Phase 2)
+
+docs/FABRICATION_PIPELINE.md    future  (fabrication phase)
+docs/PARAMETER_REFERENCE.md     future
+docs/LICENSE_PROVENANCE.md      future
+docs/MIGRATION_NOTES.md         future
+fabrication/                    future  — CAD exporter + validator + splitter
+gui/                            future  — lazy-imported
 ```
+
+The Phase 1 plan listed the canonical model as "Phase 3" and a separate
+`spirob/tendons.py`. Both are superseded: the model landed as project Phase 2,
+and the canonical tendon definition lives in
+`spirob.geometry._build_tendon_paths` rather than a separate module, so there is
+one file to read and one place to change the routing rule when F-08 is settled.
 
 ### 5.2 Modified files
 
-| File | Change | Risk |
+| File | Change | Status / Risk |
 |---|---|---|
-| `helper_functions.py` | keep every public signature; re-express bodies over `SpiRobGeometry` | **Medium** — `spirob-assembly` does not import it, but user notebooks may |
-| `spirob_csv_generator.py` | build geometry via the canonical model; identical CSV bytes under defaults | **High** — the CSV is the pipeline's stable interface |
-| `preview.py` | delete the private fork, import canonical model, fix F-07 | Low — visual output only |
-| `csv2xml.py` | consume canonical tendon paths; `--phi-deg` default `None` | **High** — MJCF is consumed by `spirob-assembly` |
-| `csv2geom_nlobe.py` | consume canonical model; STL output unchanged | Medium |
-| `build.py` | accept `--nlobe` no-op; emit build manifest | Low |
-| `params.json` | add `length_definition`, `terminal_unit_policy`, `fabrication` | Low — all default to current behaviour |
-| `README.md` | fix F-01, F-02 | None |
+| `preview.py` | delete the private fork, import canonical model, fix F-07 | **landed** — visual output only; no pipeline artefact changed |
+| `params.json` | add `terminal_unit_policy` | **landed** — key is optional and defaults to current behaviour |
+| `helper_functions.py` | keep every public signature; re-express bodies over `SpiRobGeometry` | not started. **Medium** — `spirob-assembly` does not import it, but user notebooks may |
+| `spirob_csv_generator.py` | build geometry via the canonical model; identical CSV bytes under defaults | not started. **High** — the CSV is the pipeline's stable interface |
+| `csv2xml.py` | consume canonical tendon paths; `--phi-deg` default `None` | not started. **High** — MJCF is consumed by `spirob-assembly` |
+| `csv2geom_nlobe.py` | consume canonical model; STL output unchanged | not started. Medium |
+| `build.py` | accept `--nlobe` no-op; emit build manifest | not started. Low |
+| `README.md` | fix F-01, F-02 | not started. None |
+
+The superseded `length_definition` key is not in the shipped `params.json` and
+is not planned; a `fabrication` block belongs to the fabrication phase.
 
 ### 5.3 Backward-compatibility risks
 
 1. **CSV schema is load-bearing.** `csv2geom_nlobe.py`, `csv2xml.py` and
    `spirob-assembly` all parse it by column name. Column names and order must
    not change. Any new field appends only.
-2. **Byte-identical default output.** With `length_definition = "continuous_arc"`
-   and `terminal_unit_policy = "truncate"`, the refactor must reproduce today's
-   CSV, STL set and XML exactly. This needs a golden-file test recorded from the
-   `a6ea28d` baseline *before* Phase 3 starts.
-3. **F-04 and F-07 fixes change output.** Both are genuine corrections, so
-   byte-identity is impossible once they land. They must ship in their own
-   commit group, after the golden files exist, with the numeric delta published.
-   The base offset in particular shifts every `z` by 2.6246 mm.
+2. **Byte-identical default output.** ~~With `length_definition = "continuous_arc"`
+   and `terminal_unit_policy = "truncate"`~~ — superseded naming. The
+   requirement, restated: with `terminal_unit_policy = "exact_requested_length"`
+   (the default, and the behaviour when the key is absent), the refactor must
+   reproduce the baseline CSV, STL set and XML exactly. **Verified for Phase 2**
+   by building `main` in a separate worktree and comparing: CSV identical, XML
+   identical, 21/21 STL identical. The same check must be repeated for each
+   remaining consumer migration.
+3. ~~**F-04 and F-07 fixes change output.**~~ **CORRECTED — this risk was
+   misdiagnosed and does not exist.**
+
+   The Phase 1 text claimed both findings were defects whose repair would break
+   byte-identity, and specifically that "the base offset shifts every `z` by
+   2.6246 mm". Both halves are wrong.
+
+   - **F-04 is not a defect and nothing is shifted.** `Invert_pose()`
+     intentionally anchors the **tip** at the requested length. The 2.6246 mm is
+     the continuous-arc versus discrete-chord difference (F-03) surfacing in the
+     frame — not an accidental root displacement, and not a quantity to correct
+     away. The simulated root pose is established by `csv2xml.py` from
+     `post_gen.robot_pos`, independently of this frame offset. No geometry shift
+     is required or permitted.
+   - **F-07 was a real defect, and fixing it changed no pipeline artefact.** The
+     bug lived only in `preview.py`, which produces a PNG and nothing else. CSV,
+     STL and XML were never affected, and are byte-identical after the fix.
+
+   The residual risk in this item therefore reduces to F-08, which is
+   deliberately unfixed precisely because settling it *would* change MJCF
+   output. See item 3a.
+
+3a. **F-08 will change MJCF output when it is settled.** The tendon routing rule
+   is still undecided. Whichever rule is chosen, adopting it will move tendon
+   site positions and therefore change `spirob_physics_model.xml`. That change
+   must ship in its own commit group with the numeric delta published, and must
+   be coordinated with the fabrication phase so the MJCF tendon and the printed
+   channel agree.
 4. **`spirob-assembly` mount alignment.** `test_palm_camera_position` asserts
    `palm_cam Z ≈ L = 0.22628`. If the primary generator starts reporting a
    realised length of 223.6554 mm, that assertion is the first thing to break.
    The manifest must expose both lengths so the assembly layer can choose, and
    the assembly repo must keep its current default.
-5. **`post_gen.robot_pos` defaults to `[0, 0, 0.22628]`.** Users have compensated
-   for F-04 by hand. Fixing it will move existing scenes by 2.6 mm.
+5. ~~**`post_gen.robot_pos` ... users have compensated for F-04 by hand.**~~
+   **CORRECTED.** `post_gen.robot_pos = [0, 0, 0.22628]` is not a hand-applied
+   workaround for a defect. It is how `csv2xml.py` establishes the simulated
+   root pose: `rel[0]` is overridden from `post_gen`, so the CSV-frame base
+   offset never reaches the model. Verified on the built model — `link_001`
+   world position is exactly `[0, 0, 0.22628]`. Nothing here needs "fixing" and
+   no existing scene moves.
 6. **`phi_deg` alias.** Accepting `taper_angle_deg` must error, not warn, if both
    are present and disagree.
 7. **CadQuery version.** Moving off the git pin changes the tessellator; STL
@@ -603,37 +769,60 @@ tests/                          landed: test_analytical.py, test_conventions.py
 ### 5.4 Recommended commit groups
 
 ```
-1  audit + tools + tests            <- this change group
-2  golden-file baseline capture
-3  documentation corrections        (F-01, F-02, F-11, F-12 docstrings)
-4  canonical geometry model         (Phase 3, byte-identical output)
-5  geometry corrections             (F-04, F-07, F-08 — output changes)
-6  fabrication CAD + validation     (Phases 5, 6)
-7  splitter                         (Phase 7)
-8  GUI                              (Phase 8)
-9  docs, examples, migration notes  (Phase 11)
+DONE  Phase 1  audit + oracle tooling + tests            40fb850
+DONE  Phase 2  canonical geometry model + preview
+               migration + F-07 fix                      06221eb, 9f0735a
+               (byte-identical CSV / STL / XML verified)
+DONE  Phase 2  documentation reconciliation              this change group
+
+NEXT           migrate spirob_csv_generator.py           (byte-identity gate)
+               migrate csv2geom_nlobe.py, csv2xml.py
+               documentation corrections F-01, F-02, F-11, F-12 docstrings
+               settle F-08 routing rule                  (changes MJCF output)
+               fabrication CAD + validation
+               splitter
+               GUI
+               examples, parameter reference, migration notes
 ```
+
+Phase numbering here is the project's own; the original specification's
+"Phase 3 = canonical model, Phase 5 = CAD, Phase 8 = GUI" numbering is not used.
+F-04 no longer appears as a corrective work item, because it is not a defect.
 
 ---
 
 ## 6. Unresolved questions
 
-These need a decision before Phase 3, and three of them need physical
-measurement rather than analysis.
+Three of these need physical measurement rather than analysis. Item 3 is the
+one blocking the fabrication phase.
 
 1. **Which length is authoritative?** Should a user asking for `L = 226.28 mm`
-   receive a robot whose backbone measures 226.28 mm when uncurled? The
-   specification's default preserves the current answer (no). Recommend flipping
-   the default to `discrete_backbone` in a future major version, since it also
-   dissolves F-04.
+   receive a robot whose backbone measures 226.28 mm when uncurled? Today: no —
+   `L` is a continuous arc length and the chord sum is 1.16 % shorter, which is
+   now measured and reported rather than hidden (F-03). ~~Recommend flipping the
+   default to `discrete_backbone` ... since it also dissolves F-04.~~
+   **Superseded on two counts:** `discrete_backbone` never shipped as a
+   parameter value, and F-04 is not a defect for anything to dissolve. If a
+   future major version wants chord-exact lengths, the verified
+   `solve_q0_for_discrete_length()` reference implementation is available, but
+   adopting it changes the spiral for every existing `params.json` and must be a
+   deliberate breaking change. Note that this is **independent** of
+   `terminal_unit_policy`: `whole_units` addresses partial units, not the chord
+   deficit.
 2. ~~**Where should the remainder go?**~~ **RESOLVED.** The partial unit belongs
    at the base; that is what preserves large-at-base ordering. Users who need
    whole units select `terminal_unit_policy: "whole_units"`, which extends the
    spiral and reports the excess. The partial unit is never moved to the tip.
-3. **What is the canonical tendon path?** Constant offset from the realised
-   staircase surface, or a smooth taper fitted through the links? The former is
-   simpler and matches the geometry; the latter is closer to a real routed
-   cable. This choice must be made once and shared by MJCF and CAD.
+3. **What is the canonical tendon path? (F-08 — still open, still the blocker.)**
+   Constant offset from the realised staircase surface, or a smooth taper fitted
+   through the links? The former is simpler and matches the geometry; the latter
+   is closer to a real routed cable. Phase 2 did **not** resolve this. It
+   reproduced the existing rule exactly, so MJCF output is unchanged, and
+   consolidated it into a single definition
+   (`spirob.geometry._build_tendon_paths`) so there is now one place to change.
+   The decision must be made once and shared by MJCF and CAD, and it will change
+   `spirob_physics_model.xml` when it lands. Tracked by the strict xfail
+   `test_tendon_offset_from_surface_is_constant`.
 4. **Does `d_tip` mean nominal or realised width?** Fabrication cares. Currently
    nominal, off by −0.92 %.
 5. **Physical validation needed:** the elastic-layer percentages (5 % two-cable,
