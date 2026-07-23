@@ -357,7 +357,7 @@ def test_preview_build_quads_is_the_canonical_inverted_pose(geo, params):
 
 def test_preview_no_longer_forks_the_spiral_maths():
     """F-10 regression guard."""
-    src = open(os.path.join(_ROOT, "preview.py")).read()
+    src = open(os.path.join(_ROOT, "preview.py"), encoding="utf-8").read()
     for symbol in ("def _phi_from_b", "def _solve_b", "def _rotate2d",
                    "def _angle_between", "def _normalize"):
         assert symbol not in src, f"{symbol} has reappeared in preview.py"
@@ -555,6 +555,6 @@ def test_slit_references_are_ordered_base_to_tip(geo):
 
 def test_canonical_layer_has_no_heavy_dependencies():
     """The canonical layer must stay importable in a headless, CAD-free env."""
-    src = open(os.path.join(_ROOT, "spirob", "geometry.py")).read()
+    src = open(os.path.join(_ROOT, "spirob", "geometry.py"), encoding="utf-8",).read()
     for forbidden in ("matplotlib", "mujoco", "cadquery", "PySide6", "vtk"):
         assert forbidden not in src, f"spirob/geometry.py imports {forbidden}"
