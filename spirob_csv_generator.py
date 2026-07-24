@@ -1,14 +1,38 @@
-import json
+"""
+SpiRob CSV generator.
+
+Geometry comes from the canonical model in ``spirob/geometry.py``. This module
+owns only two things: parameter validation for the params.json keys that the
+canonical layer does not know about (``show_preview``, the n-lobe block, the
+``post_gen`` block), and serialisation of the canonical geometry into the
+established CSV schema.
+
+It deliberately does NOT re-derive the spiral. ``b``, ``a``, ``q0``, the spiral
+pose, the straightened pose and the inverted pose all come from
+``spirob.geometry``; see docs/CANONICAL_GEOMETRY.md.
+
+The CSV writer itself (``helper_functions.generate_cable_sites_csv_zrot_from_P``)
+is retained. That is a serialisation concern, not a geometry concern, and
+keeping it is what guarantees byte-identical column layout and float formatting
+against the pre-migration baseline.
+"""
+
 import argparse
-from helper_functions import *
+import json
+import math
 import os
 import sys
+
+# Serialiser only. No geometry is imported from helper_functions.
+from helper_functions import generate_cable_sites_csv_zrot_from_P
+
+from spirob.geometry import TerminalUnitPolicy, from_params
 
 # -----------------------------
 # Load parameters from JSON
 # -----------------------------
 def load_params(json_file):
-    with open(json_file, 'r') as f:
+    with open(json_file, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -73,6 +97,13 @@ def validate_params(p: dict):
                 f"  • 'tendon_inward_shift' ({tendon_shift*1e3:.2f} mm) must be "
                 f"< d_tip/2 = {d_tip/2*1e3:.2f} mm"
             )
+
+    # ── terminal_unit_policy (optional; canonical layer owns the vocabulary) ──
+    if "terminal_unit_policy" in p:
+        try:
+            TerminalUnitPolicy.coerce(p["terminal_unit_policy"])
+        except ValueError as exc:
+            errors.append(f"  • {exc}")
 
     # ── N-lobe / trilobe (optional, validated when present) ───────────────────
     notch_factor = p.get("notch_factor")
@@ -168,6 +199,9 @@ if __name__ == "__main__":
     n_cables            = params["n_cables"]               # number of cables
     tendon_inward_shift = params["tendon_inward_shift"]    # [m] shift tendons inward
     show_preview        = params["show_preview"]           # bool
+    policy              = TerminalUnitPolicy.coerce(
+        params.get("terminal_unit_policy",
+                   TerminalUnitPolicy.EXACT_REQUESTED_LENGTH)).value
 
     # Print summary
     print(f"""
@@ -178,7 +212,8 @@ Inputs:
     Delta_theta         = {Delta_theta_deg} deg
     n_cables            = {n_cables}
     tendon_inward_shift = {tendon_inward_shift} m
-    show_preview        = {show_preview}""")
+    show_preview        = {show_preview}
+    terminal_unit_policy= {policy}""")
 
     if not args.yes:
         choice = input("\nIs this correct? (y = yes, n = no/exit): ").strip().lower()
@@ -193,14 +228,14 @@ Inputs:
     else:
         print("\nData confirmed (auto-yes). Moving to the next part...")
 
-    # Parameter calculations
-    phi         = math.radians(phi_deg)
-    Delta_theta = math.radians(Delta_theta_deg)
-    b           = solve_b_for_phi(phi)
-    e2pb        = math.exp(2 * math.pi * b)
-    a           = d_tip / (e2pb - 1.0)
-    A           = (a / b) * math.sqrt(b ** 2 + 1)  * (e2pb+1)/2 
-    q0          = (1.0 / b) * math.log(1.0 + L / A)
+    # ── Canonical geometry ────────────────────────────────────────────────
+    # b, a, q0, the spiral pose, the straightened pose and the inverted pose
+    # are all computed once, in spirob/geometry.py. Nothing is re-derived here.
+    geo = from_params(params)
+
+    b  = geo.spiral.b
+    a  = geo.spiral.a_m
+    q0 = geo.spiral.q0_rad
 
     print(f"""
 Derived:
@@ -208,10 +243,34 @@ Derived:
     spiral scale a      = {a:.9g}
     total curl angle q0 = {q0:.6g} rad  ({q0 * 180 / math.pi:.3f} deg)""")
 
-    # Pose calculations
-    spiral_pose       = generate_spiral_pose(a, b, Length=L, delta_theta=Delta_theta)
-    straightened_pose = straighten_pose(spiral_pose)
-    Spirob_final_pose = Invert_pose(straightened_pose, L)
+    lr = geo.lengths
+    print(f"""
+Lengths (see docs/GEOMETRY_AUDIT.md section 0 for the vocabulary):
+    requested continuous  = {lr.requested_continuous_length_m*1e3:10.4f} mm
+    effective continuous  = {lr.effective_continuous_length_m*1e3:10.4f} mm
+    discrete chord        = {lr.discrete_chord_length_m*1e3:10.4f} mm
+    partial-unit completion = {lr.completion_delta_m*1e3:+9.4f} mm ({lr.completion_delta_rel*100:+.4f} %)
+    arc-versus-chord        = {lr.chord_deficit_m*1e3:+9.4f} mm ({lr.chord_deficit_rel*100:+.4f} %)
+
+Units:
+    total                 = {lr.n_units_total}
+    complete              = {lr.n_complete_units}
+    partial               = {1 if lr.has_partial_unit else 0}""")
+    if lr.has_partial_unit:
+        print(f"    partial unit span     = {math.degrees(lr.partial_unit_span_rad):.4f} deg "
+              f"at {geo.units[0].link_name} (base, by design)")
+
+    base_u, tip_u = geo.units[0], geo.units[-1]
+    print(f"""
+Base-to-tip ordering:
+    {base_u.link_name} (base) realized width = {base_u.realized_width_m*1e3:8.4f} mm  radius = {base_u.realized_width_m*5e2:8.4f} mm
+    {tip_u.link_name} (tip)  realized width = {tip_u.realized_width_m*1e3:8.4f} mm  radius = {tip_u.realized_width_m*5e2:8.4f} mm""")
+
+    for warning in geo.warnings:
+        print(f"    ! {warning}")
+
+    # Inverted pose: base-first (link_001 at the wide base, smallest at the tip).
+    Spirob_final_pose = geo.inverted_quads()
 
     n_elements = len(Spirob_final_pose)
     print(f"\n    Number of elements generated: {n_elements}")

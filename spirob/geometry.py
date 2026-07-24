@@ -188,30 +188,73 @@ def _E(b: float) -> float:
 
 
 def phi_from_b(b: float) -> float:
-    """Full included taper angle, radians."""
-    E = _E(b)
-    return 2.0 * math.atan((b * (E - 1.0)) / (math.sqrt(1.0 + b * b) * (E + 1.0)))
+    """Full included taper angle, radians.
+
+    NUMERICAL CONTRACT. This must agree **bit-for-bit** with
+    ``helper_functions.phi_from_b``, which every artefact the project has ever
+    generated was built from. The ``atan2(num, den)`` form is therefore used
+    rather than the algebraically identical ``atan(num/den)``: for ``b > 0``
+    the denominator is positive so the two are mathematically the same, but
+    they round differently, and the difference propagates into every CSV, STL
+    and MJCF value. See docs/CANONICAL_GEOMETRY.md, "Numerical contract".
+    """
+    e = math.exp(2 * math.pi * b)
+    num = b * (e - 1.0)
+    den = math.sqrt(1.0 + b * b) * (e + 1.0)
+    return 2.0 * math.atan2(num, den)
 
 
 def b_from_phi(b_tol: float = 1e-15, *, phi: float, max_iter: int = 200) -> float:
-    """Invert ``phi(b)`` by bracketed bisection. Deterministic."""
+    """Invert ``phi(b)``. Deterministic bracketed bisection.
+
+    NUMERICAL CONTRACT. Reproduces ``helper_functions.solve_b_for_phi``
+    bit-for-bit, including its bracket (``lo=1e-6``, ``hi=2.0``), its 1.5x
+    expansion, and — critically — its early exit at ``abs(f(mid)) < 1e-14``.
+    That early exit stops roughly 217 ULP from the value a pure interval
+    bisection would reach. Bisecting further is *more* accurate in residual
+    terms, but it changes ``b`` by 4.8e-14 relative, which moves every digit of
+    the generated CSV. Backward compatibility wins: the canonical layer's job
+    is to be the one true source of the numbers the pipeline actually uses.
+
+    The two arguments below are retained for API compatibility and are
+    deliberately not used to loosen the contract:
+
+    ``b_tol``    kept in the signature; the legacy interval floor of 1e-14 is
+                 what actually terminates the loop.
+    ``max_iter`` capped at the legacy 120 iterations.
+
+    Unlike the legacy routine, an unbracketable ``phi`` raises instead of
+    silently returning ``max(1e-6, tan(phi/2))`` — a wrong ``b`` presented as a
+    right one. That path is unreachable for the validated range ``phi`` in
+    (0, 45) deg.
+    """
     if not (0.0 < phi < math.pi):
         raise ValueError(f"phi must lie in (0, pi) rad; got {phi!r}")
-    lo, hi = 1e-12, 1.0
-    for _ in range(200):
-        if phi_from_b(hi) >= phi:
-            break
-        hi *= 2.0
-    else:  # pragma: no cover - unreachable for phi < pi
-        raise RuntimeError(f"could not bracket b for phi={phi}")
-    for _ in range(max_iter):
+
+    def f(b: float) -> float:
+        return phi_from_b(b) - phi
+
+    lo, hi = 1e-6, 2.0
+    flo, fhi = f(lo), f(hi)
+    tries = 0
+    while flo * fhi > 0 and tries < 50:
+        hi *= 1.5
+        fhi = f(hi)
+        tries += 1
+    if flo * fhi > 0:
+        raise RuntimeError(
+            f"could not bracket b for phi={phi} rad "
+            f"({math.degrees(phi)} deg) within lo=1e-6, hi={hi}")
+
+    for _ in range(min(max_iter, 120)):
         mid = 0.5 * (lo + hi)
-        if phi_from_b(mid) < phi:
-            lo = mid
+        fmid = f(mid)
+        if abs(fmid) < 1e-14 or (hi - lo) < 1e-14:
+            return mid
+        if flo * fmid <= 0:
+            hi, fhi = mid, fmid
         else:
-            hi = mid
-        if (hi - lo) < b_tol:
-            break
+            lo, flo = mid, fmid
     return 0.5 * (lo + hi)
 
 
@@ -406,20 +449,36 @@ class BaseFrame:
 # ══════════════════════════════════════════════════════════════════════════
 
 def _rotate2d(points: np.ndarray, angle: float) -> np.ndarray:
-    R = np.array([[math.cos(angle), -math.sin(angle)],
-                  [math.sin(angle), math.cos(angle)]], dtype=float)
+    """NUMERICAL CONTRACT: mirrors ``helper_functions.rotate``.
+
+    ``np.cos``/``np.sin`` are used rather than ``math.cos``/``math.sin``. The
+    two libraries do not always round identically, and the difference reaches
+    the generated CSV.
+    """
+    R = np.array([
+        [np.cos(angle), -np.sin(angle)],
+        [np.sin(angle), np.cos(angle)]
+    ])
     return points @ R.T
 
 
 def _signed_angle_to_up(v: np.ndarray) -> float:
-    """Rotation that carries the 2-D vector ``v`` onto +Y."""
+    """Rotation that carries the 2-D vector ``v`` onto +Y.
+
+    NUMERICAL CONTRACT: mirrors ``helper_functions.angle_between`` against the
+    +Y reference, including its use of ``np.arccos`` rather than ``math.acos``.
+    Those two differ by one ULP on some inputs — with the committed defaults,
+    on exactly one element (the partial base unit) — and that single ULP moves
+    11 fields of the generated CSV.
+    """
     ref = np.array([0.0, 1.0, 0.0])
     v3 = np.array([v[0], v[1], 0.0], dtype=float)
-    n1 = np.linalg.norm(v3)
-    if n1 == 0.0:
+    if np.linalg.norm(v3) == 0.0:
         raise ValueError("degenerate zero-length unit; check Delta_theta_deg")
-    cosang = float(np.clip(np.dot(v3 / n1, ref), -1.0, 1.0))
-    angle = math.acos(cosang)
+    v1_u = v3 / np.linalg.norm(v3)
+    v2_u = ref / np.linalg.norm(ref)
+    dot = np.clip(np.dot(v1_u, v2_u), -1.0, 1.0)
+    angle = float(np.arccos(dot))
     if np.cross(v3, ref)[2] < 0:
         angle = -angle
     return angle
