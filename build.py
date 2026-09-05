@@ -8,6 +8,8 @@ Usage
   python build.py --no-preview           # skip preview gate (CI / batch)
   python build.py --noclean              # keep previous outputs
   python build.py --safe / --fast / --high   # physics preset passed to csv2xml
+  python build.py --cad                  # also export a whole-robot STEP + solid STL
+  python build.py --cad --fuse-cad       # ...as one boolean-fused solid (slower)
 
 Cross-section is driven by n_cables in params.json:
   n_cables <= 2   →  flat extrusion  (hinge joints)
@@ -67,6 +69,10 @@ def main():
     parser.add_argument("--safe",       action="store_true", help="MuJoCo safe-mode preset")
     parser.add_argument("--fast",       action="store_true", help="MuJoCo fast-mode preset")
     parser.add_argument("--high",       action="store_true", help="MuJoCo high-fidelity preset")
+    parser.add_argument("--cad",        action="store_true",
+                        help="Also export a whole-robot STEP + solid STL to cad/ (for printing/CAD)")
+    parser.add_argument("--fuse-cad",   action="store_true",
+                        help="With --cad, boolean-union elements into one solid (slower, cleaner)")
     args = parser.parse_args()
 
     # ── Load & validate params ────────────────────────────────────────────────
@@ -143,6 +149,17 @@ def main():
         xml_cmd += " --high"
 
     run_step(xml_cmd, "Generating XML model")
+
+    # ── Step 4 (optional): whole-robot solid CAD export ───────────────────────
+    if args.cad:
+        cad_cmd = (f"python cad_export.py "
+                   f"--in Geom_Data_CSV/Spirob_geom_data.csv "
+                   f"--params {args.params} --outdir cad")
+        if args.plain:
+            cad_cmd += " --plain"
+        if args.fuse_cad:
+            cad_cmd += " --fuse"
+        run_step(cad_cmd, "Exporting whole-robot STEP + solid STL")
 
     print("\n✅  Pipeline completed successfully!")
 

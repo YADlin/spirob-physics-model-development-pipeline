@@ -10,6 +10,8 @@ SpirobModelEnv/
 # Generated outputs
 Geom_Data_CSV/
 meshes/
+cad/
+*_split/
 *.xml
 
 # Editor settings

@@ -7,3 +7,13 @@ mujoco==3.3.5
 numpy==2.3.2
 
 pandas==2.3.2
+
+# ── Optional: fabrication part-splitter, STL path (fabrication/part_splitter.py)
+#    The STEP path needs only cadquery (already above). The STL path needs:
+trimesh
+shapely
+mapbox-earcut
+
+# ── Optional: GUI (design_gui.py) uses Tkinter, which ships with standard
+#    CPython. On Debian/Ubuntu it comes from the system package `python3-tk`
+#    (e.g. `sudo apt install python3-tk`); there is no pip package for it.

@@ -45,9 +45,11 @@ python -m mujoco.viewer --mjcf=spirob_physics_model.xml
 | `--high` | High-fidelity preset (RK4 integrator, fine timestep) |
 | `--noclean` | Keep previous CSV/STL/XML outputs |
 | `--no-preview` | Skip interactive preview (batch / CI use) |
+| `--cad` | Also export a whole-robot **STEP + solid STL** to `cad/` (for 3-D printing / CAD) |
+| `--fuse-cad` | With `--cad`, boolean-union the elements into one solid (slower, cleaner) |
 | `--params FILE` | Use a different params JSON file (default: `params.json`) |
 
-Flags can be combined: `python build.py --nlobe --safe --no-preview`
+Flags can be combined: `python build.py --nlobe --safe --no-preview --cad`
 
 ---
 
@@ -57,10 +59,16 @@ Flags can be combined: `python build.py --nlobe --safe --no-preview`
 ├── build.py                  # Pipeline driver
 ├── params.json               # All user-facing parameters — edit this
 ├── spirob_csv_generator.py   # Step 1: spiral maths → geometry CSV
-├── csv2geom_nlobe.py         # Step 2: CSV → STL meshes
+├── csv2geom_nlobe.py         # Step 2: CSV → per-link STL meshes (for MuJoCo)
 ├── csv2xml.py                # Step 3: CSV + STL → MuJoCo MJCF XML
+├── cad_export.py             # Optional: whole-robot STEP + solid STL (printing/CAD)
+├── design_gui.py             # Optional: desktop GUI wrapping the pipeline
 ├── preview.py                # Interactive 2-D geometry preview
 ├── helper_functions.py       # Shared spiral maths
+├── fabrication/
+│   └── part_splitter.py      # Split oversized STEP/STL into printable parts
+├── tools/
+│   └── multi_array.py        # Replicate the model into a circular robot array
 ├── requirements.txt
 ├── README.md
 └── .gitignore
@@ -149,6 +157,78 @@ Use `first_joint_stiffness` / `first_joint_damping` to independently override jo
 
 ---
 
+## Fabrication & CAD
+
+The per-link STL meshes in `meshes/` are what MuJoCo loads — each is in its own
+link frame. For **3-D printing or CAD**, you want the whole robot as one solid,
+which `cad_export.py` produces.
+
+### Whole-robot STEP + solid STL
+
+```bash
+python cad_export.py                 # writes cad/spirob_<timestamp>.step and .stl
+python cad_export.py --fuse          # boolean-union into a single manifold solid
+python build.py --nlobe --cad        # or export as part of the normal build
+```
+
+It assembles every element in its world position (reusing the exact geometry the
+simulation meshes are built from) and writes a STEP (authoritative solid for CAD
+/ slicers) plus a solid STL. Works for both the n-lobe (`n_cables >= 3`) and flat
+(`n_cables <= 2`) cross-sections. The default combines elements as a compound
+(fast); `--fuse` produces one boolean-fused solid (slower).
+
+### Splitting oversized parts for printing
+
+If the robot is larger than your printer's build volume, split it along one axis:
+
+```bash
+# STEP (true solid splitting via CadQuery)
+python fabrication/part_splitter.py cad/spirob_<ts>.step --axis z --max-span-mm 180
+
+# STL (mesh splitting) with explicit cut planes and build-volume fit checks
+python fabrication/part_splitter.py cad/spirob_<ts>.stl  --axis z \
+       --cut-positions-mm 80,160 --build-volume-mm 256,256,256
+```
+
+Output goes to a sibling `<input>_split/` folder with numbered parts and a
+`split_report.json` (each part's bounds, span, and build-volume fit). Sizes are
+given in **mm**; the input files are numerically in metres, which is the default
+(`--file-units m`). The STL path needs `trimesh`, `shapely`, and `mapbox-earcut`
+(see `requirements.txt`). This first version does geometric splitting only — no
+keyed joints or pins yet.
+
+---
+
+## Multi-robot array
+
+Replicate a generated model into a circular array of robots sharing one world:
+
+```bash
+python tools/multi_array.py --in spirob_physics_model.xml --count 6 \
+       --radius-m 0.12 --tilt-deg -20 --out spirob_array.xml
+```
+
+Each copy's bodies, joints, geoms, sites, tendons and actuators are renamed with
+a `_r{k}` suffix (mesh assets are shared), so the result loads directly in MuJoCo.
+
+---
+
+## Desktop GUI
+
+A lightweight params-driven GUI wraps the whole pipeline — edit parameters with a
+live 2-D preview (side profile + cross-section), then build, export STEP/STL,
+generate an array, or open the MuJoCo viewer:
+
+```bash
+python design_gui.py                 # loads params.json
+```
+
+Built on Tkinter (ships with standard CPython; on Debian/Ubuntu install
+`python3-tk`) and Matplotlib. The preview reuses this repo's own geometry code,
+so it always matches what the pipeline builds.
+
+---
+
 ## Troubleshooting
 
 **Parameter error on startup** — `validate_params()` lists every problem. Fix `params.json` and re-run.
@@ -160,3 +240,20 @@ Use `first_joint_stiffness` / `first_joint_damping` to independently override jo
 **Tendons miss the link geometry** — increase `tendon_inward_shift`. The preview shows the corrected tendon path; verify visually before generating STL.
 
 **Simulation unstable** — start with `--safe`. If stable, move to `--fast` then default. If still unstable, increase `joint_damping_base` in `post_gen`.
+
+---
+
+## Credits & attribution
+
+This project is MIT-licensed (see `LICENSE`). The core spiral geometry follows
+the logarithmic-spiral formulation of **SpiRobs** (Wang et al., 2024, *SpiRobs:
+Logarithmic spiral-shaped robots for versatile grasping across scales*).
+
+The fabrication and CAD features added here — whole-robot STEP/STL export, the
+build-volume-aware part splitter, the multi-robot array, and the design GUI —
+were **inspired by** the authors' [OpenSpiRobs toolkit](https://github.com/ZhanchiWang/Open-Spiral-Robots)
+(Zhanchi Wang et al.), which is released under the PolyForm Noncommercial
+license. To keep this repository MIT-licensed and commercial-friendly, those
+features are **clean-room reimplementations** built on this repo's own geometry
+stack — no OpenSpiRobs source code is used or included. Unlike that toolkit,
+they support the full n-cable (`> 3`) cross-section this pipeline generates.
