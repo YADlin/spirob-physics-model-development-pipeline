@@ -69,31 +69,37 @@ class CadExportResult:
 #  path), so each element sits where it physically belongs along the robot.
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _flat_element_world(row, t_const: float):
-    """Flat element as a full-width symmetric leaf of **constant** thickness.
+def _flat_element_world(row, t_center: float, edge_ratio: float = 0.25):
+    """Flat element with a **lens (biconvex) cross-section** across its width.
 
-    This matches the shape the original OpenSpiRobs design tool exports for the
-    2-/3-cable case: the unfolded trapezoid units, mirrored across the central
-    spiral edge into a symmetric leaf outline, extruded to a *uniform* thickness
-    (there: ``max(0.1, base_size*0.6)``; here: a single ``t_const`` computed once
-    from the base element — see ``_flat_thickness``). It is a clean-room build on
-    this repo's own quad data; no upstream code is used.
-
-    The base/tip edges use the centreline (joint) z so consecutive elements share
-    an interface and stack seamlessly; the outer half-widths taper base→tip.
+    The thickness (Y) is highest at the centre-line (x = 0) and tapers toward
+    both lateral edges (x = ±half-width), where the cables/holes sit — the taper
+    the physical SpiRob has. ``t_center`` is the centre thickness; the edges keep
+    ``edge_ratio × t_center`` so there is material around the cable holes (not a
+    knife edge). The element is lofted from its base cross-section to its tip
+    cross-section, so the outer half-width tapers base→tip while the lens shape
+    is preserved. Clean-room, on this repo's own quad data.
     """
     z_base = float(row["joint_s1_z"])          # centreline, base end
     z_tip = float(row["joint_s2_z"])           # centreline, tip end
-    xb_base = abs(float(row["c0_s1_x"]))       # outer half-width, base end
-    xb_tip = abs(float(row["c0_s2_x"]))        # outer half-width, tip end
+    w_base = abs(float(row["c0_s1_x"]))        # outer half-width, base end
+    w_tip = abs(float(row["c0_s2_x"]))         # outer half-width, tip end
+    t_edge = t_center * max(0.0, edge_ratio)
 
-    # Full-width symmetric trapezoid in the XZ plane (mirror across x = 0).
-    poly = [
-        (-xb_base, z_base), (xb_base, z_base),
-        (xb_tip,  z_tip),  (-xb_tip,  z_tip),
-    ]
-    # Extrude a uniform thickness in ±Y (centred on the XZ plane).
-    return cq.Workplane("XZ").polyline(poly).close().extrude(t_const / 2.0, both=True)
+    def lens(w):
+        # Hexagonal lens in the X–Y plane: thick (t_center) at x=0, thin
+        # (t_edge) at x=±w. X = width, Y = thickness.
+        return [
+            (-w, -t_edge / 2.0), (0.0, -t_center / 2.0), (w, -t_edge / 2.0),
+            (w,  t_edge / 2.0), (0.0,  t_center / 2.0), (-w,  t_edge / 2.0),
+        ]
+
+    return (
+        cq.Workplane("XY")
+        .workplane(offset=z_base).polyline(lens(w_base)).close()
+        .workplane(offset=(z_tip - z_base)).polyline(lens(w_tip)).close()
+        .loft(ruled=True)
+    )
 
 
 def _flat_thickness(units: Sequence[UnitMeshInputs], flat_thickness_ratio: float,
@@ -112,13 +118,15 @@ def _flat_thickness(units: Sequence[UnitMeshInputs], flat_thickness_ratio: float
 
 def build_world_solid(unit: UnitMeshInputs, *, n_cables: int, draft_angle_deg: float,
                       nlobe_t: float, notch_factor: float,
-                      plain: bool, flat_mode: bool, flat_thickness: float):
+                      plain: bool, flat_mode: bool, flat_thickness: float,
+                      flat_edge_ratio: float = 0.25):
     """Build one element as a CadQuery solid in world coordinates.
 
-    ``flat_thickness`` is the constant plate thickness (metres) used in flat mode.
+    ``flat_thickness`` is the centre thickness (metres) used in flat mode, and
+    ``flat_edge_ratio`` sets the edge/centre thickness ratio of the lens section.
     """
     if flat_mode:
-        return _flat_element_world(unit.row, flat_thickness)
+        return _flat_element_world(unit.row, flat_thickness, flat_edge_ratio)
 
     points = list(unit.profile_xyz)
     if len(points) < 2:
@@ -136,7 +144,7 @@ def build_world_solid(unit: UnitMeshInputs, *, n_cables: int, draft_angle_deg: f
 def build_assembled_solid(units: Sequence[UnitMeshInputs], *, n_cables: int,
                           draft_angle_deg: float, nlobe_t: float, notch_factor: float,
                           plain: bool, flat_mode: bool, flat_thickness: float,
-                          fuse: bool = False):
+                          flat_edge_ratio: float = 0.25, fuse: bool = False):
     """Assemble all elements into one CadQuery object in world coordinates.
 
     ``fuse=False`` (default) returns a compound of the element solids — fast and
@@ -150,6 +158,7 @@ def build_assembled_solid(units: Sequence[UnitMeshInputs], *, n_cables: int,
             unit, n_cables=n_cables, draft_angle_deg=draft_angle_deg,
             nlobe_t=nlobe_t, notch_factor=notch_factor, plain=plain,
             flat_mode=flat_mode, flat_thickness=flat_thickness,
+            flat_edge_ratio=flat_edge_ratio,
         )
         if s is None:
             continue
@@ -176,6 +185,7 @@ def process_cad(csv_file: str, params: dict, *, outdir: str = "cad",
                 prefix: str = "spirob", fuse: bool = False,
                 plain: bool = False, stl_tolerance: float = 1e-4,
                 flat_thickness_m: Optional[float] = None,
+                flat_edge_ratio: Optional[float] = None,
                 geometry: Optional[SpiRobGeometry] = None) -> CadExportResult:
     """CSV (+ params) → assembled STEP and solid STL of the whole robot."""
     if geometry is None:
@@ -195,6 +205,8 @@ def process_cad(csv_file: str, params: dict, *, outdir: str = "cad",
     flat_thickness = _flat_thickness(
         units, float(params.get("flat_thickness_ratio", 0.3)), flat_thickness_m
     ) if flat_mode else 0.0
+    edge_ratio = (flat_edge_ratio if flat_edge_ratio is not None
+                  else float(params.get("flat_edge_ratio", 0.25)))
 
     mode = ("plain revolve" if plain
             else f"{n_cables}-cable flat" if flat_mode
@@ -203,7 +215,8 @@ def process_cad(csv_file: str, params: dict, *, outdir: str = "cad",
     print(f"  mode       = {mode}")
     print(f"  elements   = {len(units)}")
     if flat_mode:
-        print(f"  thickness  = {flat_thickness*1000:.2f} mm (constant, authors-style flat plate)")
+        print(f"  section    = lens (centre {flat_thickness*1000:.2f} mm → "
+              f"edges {flat_thickness*edge_ratio*1000:.2f} mm, thick middle → thin cable-hole edges)")
     print(f"  combine    = {'boolean union (fused)' if fuse else 'compound'}")
 
     combined, n_elem = build_assembled_solid(
@@ -211,7 +224,7 @@ def process_cad(csv_file: str, params: dict, *, outdir: str = "cad",
         nlobe_t=float(params.get("nlobe_t", 0.5)),
         notch_factor=float(params.get("notch_factor", 0.25)),
         plain=plain, flat_mode=flat_mode,
-        flat_thickness=flat_thickness,
+        flat_thickness=flat_thickness, flat_edge_ratio=edge_ratio,
         fuse=fuse,
     )
 
@@ -247,8 +260,11 @@ def main():
     parser.add_argument("--plain", action="store_true",
                         help="Plain revolve — no n-lobe cut")
     parser.add_argument("--flat-thickness-m", type=float, default=None,
-                        help="Constant plate thickness (m) for 2-cable flat export; "
+                        help="Centre thickness (m) of the 2-cable lens section; "
                              "default = flat_thickness_ratio × base outer diameter")
+    parser.add_argument("--flat-edge-ratio", type=float, default=None,
+                        help="Edge/centre thickness ratio of the 2-cable lens section "
+                             "(0 = knife edge, default 0.25)")
     args = parser.parse_args()
 
     with open(args.params, encoding="utf-8") as f:
@@ -256,7 +272,8 @@ def main():
 
     process_cad(args.input, params, outdir=args.outdir, prefix=args.prefix,
                 fuse=args.fuse, plain=args.plain,
-                flat_thickness_m=args.flat_thickness_m)
+                flat_thickness_m=args.flat_thickness_m,
+                flat_edge_ratio=args.flat_edge_ratio)
 
 
 if __name__ == "__main__":

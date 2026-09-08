@@ -177,11 +177,12 @@ simulation meshes are built from) and writes a STEP (authoritative solid for CAD
 `--fuse` produces one boolean-fused solid (slower).
 
 - **`n_cables >= 3`** → the n-lobe solid (revolved cross-section with notch cuts).
-- **`n_cables <= 2`** → a **uniform-thickness flat leaf plate** — the tapered
-  outline extruded to a single constant thickness, matching the shape the
-  original OpenSpiRobs design tool exports (its unfolded, constant-thickness
-  strip). Thickness defaults to `flat_thickness_ratio × base outer diameter`;
-  override it in metres with `--flat-thickness-m` (e.g. `--flat-thickness-m 0.008`).
+- **`n_cables <= 2`** → a flat leaf with a **lens (biconvex) cross-section**: the
+  thickness is highest along the centre-line and tapers toward both lateral edges
+  (the cable holes), like the physical SpiRob. Centre thickness defaults to
+  `flat_thickness_ratio × base outer diameter` (override with `--flat-thickness-m`);
+  the edge thickness is `flat_edge_ratio × centre` (default 0.25, override with
+  `--flat-edge-ratio`; use `0` for a knife edge).
 
 ### Splitting oversized parts for printing
 
