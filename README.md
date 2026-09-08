@@ -173,9 +173,15 @@ python build.py --nlobe --cad        # or export as part of the normal build
 
 It assembles every element in its world position (reusing the exact geometry the
 simulation meshes are built from) and writes a STEP (authoritative solid for CAD
-/ slicers) plus a solid STL. Works for both the n-lobe (`n_cables >= 3`) and flat
-(`n_cables <= 2`) cross-sections. The default combines elements as a compound
-(fast); `--fuse` produces one boolean-fused solid (slower).
+/ slicers) plus a solid STL. The default combines elements as a compound (fast);
+`--fuse` produces one boolean-fused solid (slower).
+
+- **`n_cables >= 3`** → the n-lobe solid (revolved cross-section with notch cuts).
+- **`n_cables <= 2`** → a **uniform-thickness flat leaf plate** — the tapered
+  outline extruded to a single constant thickness, matching the shape the
+  original OpenSpiRobs design tool exports (its unfolded, constant-thickness
+  strip). Thickness defaults to `flat_thickness_ratio × base outer diameter`;
+  override it in metres with `--flat-thickness-m` (e.g. `--flat-thickness-m 0.008`).
 
 ### Splitting oversized parts for printing
 
