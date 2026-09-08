@@ -1,56 +1,19 @@
+"""Whole SpiRob CAD export, in millimetres for CAD applications and slicers.
+
+Independent implementation using this repository's canonical geometry. Feature
+inspiration: https://github.com/ZhanchiWang/Open-Spiral-Robots; no source copied.
+Simulation assembly preserves the link geometry. Fabrication adds a finite
+central flexure and optionally drills the canonical tendon paths. Its dimensions
+are design choices, not an identification of the existing MJCF dynamics.
 """
-cad_export.py  —  Whole-robot solid CAD export (STEP + solid STL).
-
-Where the per-element ``csv2geom_nlobe.py`` writes one STL *per link* in each
-link's own local frame (what MuJoCo needs), this module assembles every element
-in its **world position** into a single solid model and writes it as a STEP
-file (for CAD / slicers) and a fused solid STL. That is the file you hand to a
-slicer to 3-D print the physical SpiRob, or open in a CAD package to modify.
-
-Design notes
-------------
-* This is a *clean-room* reimplementation, written for this pipeline. The idea
-  of a solid STEP/STL export for a spiral robot is inspired by the OpenSpiRobs
-  design tool by Zhanchi Wang et al. (SpiRobs, Wang et al. 2024,
-  https://github.com/ZhanchiWang/Open-Spiral-Robots, PolyForm-Noncommercial).
-  No code from that project is used or copied here; this module builds on this
-  repo's own MIT-licensed geometry stack. Unlike that tool, it supports the
-  full n-cable (>3) n-lobe cross-section this repo generates.
-* It reuses the exact element-construction helpers from ``csv2geom_nlobe.py``,
-  so the printed solid matches the simulated meshes vertex-for-vertex — the
-  only difference is that elements are kept in world coordinates and combined,
-  instead of being recentred to each link's local origin.
-* The per-element STL path in ``csv2geom_nlobe.py`` is left untouched, so the
-  project's byte-identical STL guarantee and its tests are unaffected.
-
-CLI
----
-  python cad_export.py                          # uses params.json + default CSV
-  python cad_export.py --fuse                   # boolean-union into one solid
-  python cad_export.py --in Geom_Data_CSV/Spirob_geom_data.csv --outdir cad
-  python cad_export.py --plain                  # no n-lobe cut (solid of rev.)
-"""
-
 from __future__ import annotations
 
 import argparse
+from dataclasses import asdict, dataclass
+import hashlib
 import json
-import os
-from dataclasses import dataclass
-from datetime import datetime
-from typing import List, Optional, Sequence
-
-import cadquery as cq
-import pandas as pd
-
-from spirob.geometry import SpiRobGeometry, from_params
-from csv2geom_nlobe import (
-    UnitMeshInputs,
-    build_unit_inputs,
-    make_profile_from_points,
-    revolve_profile,
-    add_nlobe_cut,
-)
+import math
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -59,222 +22,202 @@ class CadExportResult:
     stl_path: str
     n_elements: int
     fused: bool
+    report_path: str
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-#  World-coordinate element solids
-#
-#  These mirror the two construction paths in csv2geom_nlobe.process_csv, but
-#  WITHOUT the local-frame recentring (revolve path) / z-origin shift (flat
-#  path), so each element sits where it physically belongs along the robot.
-# ──────────────────────────────────────────────────────────────────────────────
+def _positive(name, value, allow_zero=False):
+    value = float(value)
+    if not math.isfinite(value) or (value < 0 if allow_zero else value <= 0):
+        raise ValueError(f"{name} must be finite and {'nonnegative' if allow_zero else 'positive'}")
+    return value
 
-def _flat_element_world(row, t_center: float, edge_ratio: float = 0.25):
-    """Flat element with a **lens (biconvex) cross-section** across its width.
 
-    The thickness (Y) is highest at the centre-line (x = 0) and tapers toward
-    both lateral edges (x = ±half-width), where the cables/holes sit — the taper
-    the physical SpiRob has. ``t_center`` is the centre thickness; the edges keep
-    ``edge_ratio × t_center`` so there is material around the cable holes (not a
-    knife edge). The element is lofted from its base cross-section to its tip
-    cross-section, so the outer half-width tapers base→tip while the lens shape
-    is preserved. Clean-room, on this repo's own quad data.
+def _lens_element_mm(unit, thickness_mm, edge_ratio):
+    """Preserve all four XZ quad vertices, including the slanted slit faces.
+
+    Each half is a closed hexahedron. Triangular faces avoid non-planar loft
+    end wires (the centre and outer edge have different Z coordinates).
     """
-    z_base = float(row["joint_s1_z"])          # centreline, base end
-    z_tip = float(row["joint_s2_z"])           # centreline, tip end
-    w_base = abs(float(row["c0_s1_x"]))        # outer half-width, base end
-    w_tip = abs(float(row["c0_s2_x"]))         # outer half-width, tip end
-    t_edge = t_center * max(0.0, edge_ratio)
-
-    def lens(w):
-        # Hexagonal lens in the X–Y plane: thick (t_center) at x=0, thin
-        # (t_edge) at x=±w. X = width, Y = thickness.
-        return [
-            (-w, -t_edge / 2.0), (0.0, -t_center / 2.0), (w, -t_edge / 2.0),
-            (w,  t_edge / 2.0), (0.0,  t_center / 2.0), (-w,  t_edge / 2.0),
-        ]
-
-    return (
-        cq.Workplane("XY")
-        .workplane(offset=z_base).polyline(lens(w_base)).close()
-        .workplane(offset=(z_tip - z_base)).polyline(lens(w_tip)).close()
-        .loft(ruled=True)
-    )
+    import cadquery as cq
+    points = unit.profile_xyz
+    footprint = [(points[i][0]*1000, points[i][2]*1000) for i in (0, 3, 2, 1)]
+    vertices = [cq.Vector(0 if i in (0, 3) else x,
+                          sign*thickness_mm/2*(1 if i in (0, 3) else edge_ratio), z)
+                for sign in (-1, 1) for i, (x, z) in enumerate(footprint)]
+    centre = sum(vertices, cq.Vector()) / 8
+    faces = []
+    for quad in ((0,1,2,3), (4,5,6,7), (0,1,5,4), (1,2,6,5), (2,3,7,6), (3,0,4,7)):
+        for ids in ((quad[0],quad[1],quad[2]), (quad[0],quad[2],quad[3])):
+            a, b, c = [vertices[i] for i in ids]
+            if (b-a).cross(c-a).dot((a+b+c)/3-centre) < 0:
+                b, c = c, b
+            faces.append(cq.Face.makeFromWires(cq.Wire.makePolygon([a,b,c], close=True)))
+    half = cq.Solid.makeSolid(cq.Shell.makeShell(faces)).fix()
+    return half.fuse(half.mirror('YZ')).clean()
 
 
-def _flat_thickness(units: Sequence[UnitMeshInputs], flat_thickness_ratio: float,
-                    override: Optional[float]) -> float:
-    """Constant plate thickness for the flat (2-cable) CAD export.
-
-    ``override`` (metres) wins if given; otherwise the thickness is
-    ``flat_thickness_ratio × base outer diameter`` — proportional to the robot's
-    base size and constant along its length, like the authors' export.
-    """
-    if override is not None:
-        return float(override)
-    base_outer_diameter = 2.0 * max(u.outer_radius_m for u in units)
-    return flat_thickness_ratio * base_outer_diameter
-
-
-def build_world_solid(unit: UnitMeshInputs, *, n_cables: int, draft_angle_deg: float,
-                      nlobe_t: float, notch_factor: float,
-                      plain: bool, flat_mode: bool, flat_thickness: float,
-                      flat_edge_ratio: float = 0.25):
-    """Build one element as a CadQuery solid in world coordinates.
-
-    ``flat_thickness`` is the centre thickness (metres) used in flat mode, and
-    ``flat_edge_ratio`` sets the edge/centre thickness ratio of the lens section.
-    """
-    if flat_mode:
-        return _flat_element_world(unit.row, flat_thickness, flat_edge_ratio)
-
-    points = list(unit.profile_xyz)
-    if len(points) < 2:
-        return None
-    profile = make_profile_from_points(points)
-    solid = revolve_profile(profile, 360, "y")          # already in world coords
-    if not plain:
-        solid = add_nlobe_cut(
-            solid, n_cables, unit.outer_radius_m, unit.height_z_m,
-            draft_angle_deg, nlobe_t=nlobe_t, notch_factor=notch_factor,
-        )
-    return solid
+def _simulation_element_mm(unit, params, plain=False):
+    from csv2geom_nlobe import build_flat_element, make_profile_from_points, revolve_profile, add_nlobe_cut
+    n = params['n_cables']
+    if n == 2 and not plain:
+        shape = build_flat_element(unit.row, params.get('flat_thickness_ratio', .3))
+        shape = shape.translate((0, 0, unit.origin_m[2]))
+    else:
+        shape = revolve_profile(make_profile_from_points(unit.profile_xyz))
+        # Match the simulation's local construction before returning to CSV frame.
+        origin = unit.origin_m
+        shape = shape.translate(tuple(-v for v in origin))
+        if not plain:
+            shape = add_nlobe_cut(shape, n, unit.outer_radius_m, unit.height_z_m,
+                                  params['phi_deg']/2, params.get('nlobe_t', .5),
+                                  params.get('notch_factor', .25))
+        shape = shape.translate(origin)
+    return shape.val().scale(1000)
 
 
-def build_assembled_solid(units: Sequence[UnitMeshInputs], *, n_cables: int,
-                          draft_angle_deg: float, nlobe_t: float, notch_factor: float,
-                          plain: bool, flat_mode: bool, flat_thickness: float,
-                          flat_edge_ratio: float = 0.25, fuse: bool = False):
-    """Assemble all elements into one CadQuery object in world coordinates.
-
-    ``fuse=False`` (default) returns a compound of the element solids — fast and
-    robust, and printable/CAD-openable as-is because the elements meet at their
-    shared interfaces. ``fuse=True`` boolean-unions them into a single manifold
-    solid, which is cleaner but far slower and occasionally fragile in OCC.
-    """
-    solids = []
+def build_cad(units, geometry, params, *, profile='fabrication', plain=False,
+              flat_thickness_m=None, flat_edge_ratio=None, neck_width_mm=1.0,
+              cable_hole_diameter_mm=0.0, fuse=False):
+    import cadquery as cq
+    if profile not in ('fabrication', 'simulation'):
+        raise ValueError('profile must be fabrication or simulation')
+    edge = float(params.get('flat_edge_ratio', .25) if flat_edge_ratio is None else flat_edge_ratio)
+    if not math.isfinite(edge) or not 0 < edge <= 1:
+        raise ValueError('flat_edge_ratio must be in (0, 1]')
+    thickness = _positive('flat_thickness_m', flat_thickness_m if flat_thickness_m is not None
+                          else params.get('flat_thickness_ratio', .3)*2*max(u.outer_radius_m for u in units))*1000
+    neck = _positive('neck_width_mm', neck_width_mm)
+    hole = _positive('cable_hole_diameter_mm', cable_hole_diameter_mm, True)
+    n = geometry.inputs.n_cables
+    if neck >= geometry.lengths.realized_tip_width_m*1000:
+        raise ValueError('neck_width_mm must be smaller than the realized tip width')
+    if profile == 'simulation' and (hole or flat_thickness_m is not None or flat_edge_ratio is not None):
+        raise ValueError('Manufacturing thickness/hole overrides require profile=fabrication')
+    shapes = []
     for unit in units:
-        s = build_world_solid(
-            unit, n_cables=n_cables, draft_angle_deg=draft_angle_deg,
-            nlobe_t=nlobe_t, notch_factor=notch_factor, plain=plain,
-            flat_mode=flat_mode, flat_thickness=flat_thickness,
-            flat_edge_ratio=flat_edge_ratio,
-        )
-        if s is None:
-            continue
-        # Unwrap Workplane -> Solid(s)
-        solids.extend(s.vals() if isinstance(s, cq.Workplane) else [s])
+        shape = (_lens_element_mm(unit, thickness, edge)
+                 if profile == 'fabrication' and n == 2 and not plain
+                 else _simulation_element_mm(unit, params, plain))
+        if not shape.isValid() or shape.Volume() <= 0:
+            raise ValueError(f'{unit.link_name}: invalid element solid')
+        shapes.append(shape)
+    z0 = geometry.units[0].local_frame_origin_m[2]*1000
+    z1 = geometry.units[-1].slit_reference_m[2]*1000
+    if profile == 'fabrication':
+        # A finite central ligament makes the zero-width simulation hinges a
+        # connected physical design. Fuse in mm to avoid metre-scale OCC tolerances.
+        if n == 2 and not plain:
+            core = cq.Workplane('XY').box(neck, thickness, z1-z0, centered=(True,True,False)).translate((0,0,z0)).val()
+        else:
+            core = cq.Solid.makeCylinder(neck/2, z1-z0, cq.Vector(0,0,z0))
+        combined = core.fuse(*shapes).clean()
+    elif fuse:
+        combined = shapes[0].fuse(*shapes[1:]).clean()
+    else:
+        combined = cq.Compound.makeCompound(shapes)
+    before_volume = combined.Volume()
+    if hole:
+        for path in geometry.tendon_paths:
+            pts = [cq.Vector(*(round(v*1000, 9) for v in p.routed_m)) for p in path.points]
+            d0 = (pts[1]-pts[0]).normalized()
+            d1 = (pts[-1]-pts[-2]).normalized()
+            extension = z1-z0
+            pts = [pts[0]-d0*extension] + pts + [pts[-1]+d1*extension]
+            wire = cq.Wire.makePolygon(pts, close=False)
+            tool = cq.Workplane(cq.Plane(origin=pts[0], normal=d0)).circle(hole/2).sweep(
+                wire, isFrenet=True, transition='round').val()
+            if not tool.isValid(): raise ValueError(f'Cable {path.cable_index}: invalid hole tool')
+            combined = combined.cut(tool).clean()
+        if before_volume-combined.Volume() <= 1e-6:
+            raise ValueError('Cable paths removed no material; inspect routing')
+    if not combined.isValid() or combined.Volume() <= 0:
+        raise ValueError('CAD boolean operations produced invalid geometry')
+    solid_count = len(combined.Solids())
+    if profile == 'fabrication' and solid_count != 1:
+        raise ValueError(f'Fabrication model has {solid_count} disconnected solids; adjust neck/hole dimensions')
+    return combined, {'profile': profile, 'solid_count': solid_count, 'valid': True,
+                      'neck_width_mm': neck if profile == 'fabrication' else None,
+                      'cable_hole_diameter_mm': hole,
+                      'flat_centre_thickness_mm': thickness if n == 2 and profile == 'fabrication' else None,
+                      'flat_edge_ratio': edge if n == 2 and profile == 'fabrication' else None,
+                      'removed_hole_volume_mm3': before_volume-combined.Volume()}
 
-    if not solids:
-        raise ValueError("No element solids were produced for CAD export.")
 
-    if fuse:
-        fused = solids[0]
-        for s in solids[1:]:
-            fused = fused.fuse(s)
-        return fused, len(solids)
-
-    return cq.Compound.makeCompound(solids), len(solids)
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-#  Orchestration
-# ──────────────────────────────────────────────────────────────────────────────
-
-def process_cad(csv_file: str, params: dict, *, outdir: str = "cad",
-                prefix: str = "spirob", fuse: bool = False,
-                plain: bool = False, stl_tolerance: float = 1e-4,
-                flat_thickness_m: Optional[float] = None,
-                flat_edge_ratio: Optional[float] = None,
-                geometry: Optional[SpiRobGeometry] = None) -> CadExportResult:
-    """CSV (+ params) → assembled STEP and solid STL of the whole robot."""
-    if geometry is None:
-        geometry = from_params(params)
-
-    if not os.path.exists(csv_file):
-        raise FileNotFoundError(f"Input CSV not found: {csv_file}")
-
-    df = pd.read_csv(csv_file)
-    units = build_unit_inputs(df, geometry)
-
-    n_cables = geometry.inputs.n_cables
-    phi_deg = geometry.inputs.phi_deg_full_included
-    draft_angle_deg = phi_deg / 2.0
-    flat_mode = (not plain) and (n_cables <= 2)
-
-    flat_thickness = _flat_thickness(
-        units, float(params.get("flat_thickness_ratio", 0.3)), flat_thickness_m
-    ) if flat_mode else 0.0
-    edge_ratio = (flat_edge_ratio if flat_edge_ratio is not None
-                  else float(params.get("flat_edge_ratio", 0.25)))
-
-    mode = ("plain revolve" if plain
-            else f"{n_cables}-cable flat" if flat_mode
-            else f"{n_cables}-lobe")
-    print("CAD export settings:")
-    print(f"  mode       = {mode}")
-    print(f"  elements   = {len(units)}")
-    if flat_mode:
-        print(f"  section    = lens (centre {flat_thickness*1000:.2f} mm → "
-              f"edges {flat_thickness*edge_ratio*1000:.2f} mm, thick middle → thin cable-hole edges)")
-    print(f"  combine    = {'boolean union (fused)' if fuse else 'compound'}")
-
-    combined, n_elem = build_assembled_solid(
-        units, n_cables=n_cables, draft_angle_deg=draft_angle_deg,
-        nlobe_t=float(params.get("nlobe_t", 0.5)),
-        notch_factor=float(params.get("notch_factor", 0.25)),
-        plain=plain, flat_mode=flat_mode,
-        flat_thickness=flat_thickness, flat_edge_ratio=edge_ratio,
-        fuse=fuse,
-    )
-
-    os.makedirs(outdir, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    step_path = os.path.join(outdir, f"{prefix}_{ts}.step")
-    stl_path = os.path.join(outdir, f"{prefix}_{ts}.stl")
-
-    cq.exporters.export(combined, step_path)
-    cq.exporters.export(combined, stl_path, tolerance=stl_tolerance)
-
-    print(f"  ✓ STEP  →  {step_path}")
-    print(f"  ✓ STL   →  {stl_path}")
-    return CadExportResult(step_path=step_path, stl_path=stl_path,
-                           n_elements=n_elem, fused=fuse)
+def process_cad(csv_file, params, *, outdir='cad', prefix='spirob', fuse=False,
+                plain=False, stl_tolerance=1e-4, flat_thickness_m=None,
+                flat_edge_ratio=None, geometry=None, profile='fabrication',
+                neck_width_mm=1.0, cable_hole_diameter_mm=0.0):
+    import cadquery as cq
+    import pandas as pd
+    from spirob.geometry import from_params
+    from csv2geom_nlobe import build_unit_inputs
+    from spirob_csv_generator import validate_params
+    validate_params(params)
+    if not prefix or Path(prefix).name != prefix or prefix in ('.', '..'):
+        raise ValueError('prefix must be a filename, without directory components')
+    _positive('stl_tolerance', stl_tolerance)
+    geometry = geometry or from_params(params)
+    units = build_unit_inputs(pd.read_csv(csv_file), geometry)
+    shape, report = build_cad(units, geometry, params, profile=profile, plain=plain,
+                             flat_thickness_m=flat_thickness_m, flat_edge_ratio=flat_edge_ratio,
+                             neck_width_mm=neck_width_mm, cable_hole_diameter_mm=cable_hole_diameter_mm,
+                             fuse=fuse)
+    # Origin at the base centre; CSV frame +Z points base -> tip. No post_gen pose.
+    shape = shape.translate((0, 0, -geometry.units[0].local_frame_origin_m[2]*1000))
+    dest = Path(outdir); dest.mkdir(parents=True, exist_ok=True)
+    step, stl, manifest = (dest/f'{prefix}{ext}' for ext in ('.step', '.stl', '_cad_report.json'))
+    cq.exporters.export(shape, str(step))  # mm geometry and STEP's mm declaration agree
+    shape.exportStl(str(stl), tolerance=stl_tolerance*1000, relative=False)
+    import trimesh
+    mesh = trimesh.load(str(stl), force='mesh')
+    # Remove duplicate/zero-area tessellation faces and weld numerically identical
+    # vertices. This is not hole filling; a remaining open mesh fails the export.
+    mesh.merge_vertices(digits_vertex=7)  # 1e-7 mm, below OCC's modelling tolerance
+    mesh.update_faces(mesh.nondegenerate_faces())
+    mesh.update_faces(mesh.unique_faces())
+    mesh.remove_unreferenced_vertices()
+    if profile == 'fabrication' and not mesh.is_volume:
+        raise ValueError('Fabrication STL is not a closed oriented volume')
+    mesh.export(str(stl))
+    check_mesh = trimesh.load(str(stl), force='mesh')
+    if profile == 'fabrication' and not check_mesh.is_volume:
+        raise ValueError('Fabrication STL round-trip validation failed')
+    report.update({'stl_watertight':bool(check_mesh.is_watertight),
+                   'stl_oriented_volume':bool(check_mesh.is_volume),
+                   'stl_vertex_merge_decimal_places_mm':7})
+    restored = cq.importers.importStep(str(step)).val()
+    bb = restored.BoundingBox()
+    if not restored.isValid() or len(restored.Solids()) != report['solid_count']:
+        raise ValueError('STEP round-trip validation failed')
+    report.update({'units':'mm', 'stl_import_units':'mm', 'n_elements':len(units),
+                   'cadquery_version':cq.__version__, 'volume_mm3':restored.Volume(),
+                   'bounds_mm':[[bb.xmin,bb.ymin,bb.zmin],[bb.xmax,bb.ymax,bb.zmax]],
+                   'lengths':asdict(geometry.lengths), 'params':params,
+                   'csv_sha256':hashlib.sha256(Path(csv_file).read_bytes()).hexdigest(),
+                   'files':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in (step,stl)},
+                   'frame':'base centre at z=0; +Z toward tip; post_gen pose not applied',
+                   'notes':['Fabrication flexure and lens dimensions require mechanical calibration.',
+                            'Cable holes are optional; zero diameter leaves undrilled geometry.',
+                            'Single valid solid is a topology check, not a print/process qualification.']})
+    manifest.write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
+    print(f'CAD: {step}, {stl}; {len(units)} elements, {report["solid_count"]} solid(s), millimetres')
+    return CadExportResult(str(step),str(stl),len(units),profile=='fabrication' or fuse,str(manifest))
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Whole-robot solid CAD export (STEP + solid STL) for SpiRob."
-    )
-    parser.add_argument("--in", dest="input",
-                        default="Geom_Data_CSV/Spirob_geom_data.csv",
-                        help="Input geometry CSV (default: Geom_Data_CSV/Spirob_geom_data.csv)")
-    parser.add_argument("--params", default="params.json",
-                        help="Path to params.json (default: params.json)")
-    parser.add_argument("--outdir", default="cad",
-                        help="Output directory (default: cad)")
-    parser.add_argument("--prefix", default="spirob",
-                        help="Output filename prefix (default: spirob)")
-    parser.add_argument("--fuse", action="store_true",
-                        help="Boolean-union elements into a single solid (slow, cleaner)")
-    parser.add_argument("--plain", action="store_true",
-                        help="Plain revolve — no n-lobe cut")
-    parser.add_argument("--flat-thickness-m", type=float, default=None,
-                        help="Centre thickness (m) of the 2-cable lens section; "
-                             "default = flat_thickness_ratio × base outer diameter")
-    parser.add_argument("--flat-edge-ratio", type=float, default=None,
-                        help="Edge/centre thickness ratio of the 2-cable lens section "
-                             "(0 = knife edge, default 0.25)")
-    args = parser.parse_args()
+    p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--in',dest='input',default='Geom_Data_CSV/Spirob_geom_data.csv')
+    p.add_argument('--params',default='params.json')
+    p.add_argument('--outdir',default='cad'); p.add_argument('--prefix',default='spirob')
+    p.add_argument('--profile',choices=['fabrication','simulation'],default='fabrication')
+    p.add_argument('--fuse',action='store_true'); p.add_argument('--plain',action='store_true')
+    p.add_argument('--flat-thickness-m',type=float); p.add_argument('--flat-edge-ratio',type=float)
+    p.add_argument('--neck-width-mm',type=float,default=1.0)
+    p.add_argument('--cable-hole-diameter-mm',type=float,default=0.0)
+    a=p.parse_args()
+    process_cad(a.input,json.loads(Path(a.params).read_text(encoding='utf-8')),outdir=a.outdir,
+                prefix=a.prefix,fuse=a.fuse,plain=a.plain,profile=a.profile,
+                flat_thickness_m=a.flat_thickness_m,flat_edge_ratio=a.flat_edge_ratio,
+                neck_width_mm=a.neck_width_mm,cable_hole_diameter_mm=a.cable_hole_diameter_mm)
 
-    with open(args.params, encoding="utf-8") as f:
-        params = json.load(f)
-
-    process_cad(args.input, params, outdir=args.outdir, prefix=args.prefix,
-                fuse=args.fuse, plain=args.plain,
-                flat_thickness_m=args.flat_thickness_m,
-                flat_edge_ratio=args.flat_edge_ratio)
-
-
-if __name__ == "__main__":
-    main()
+if __name__=='__main__': main()

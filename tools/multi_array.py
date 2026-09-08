@@ -94,98 +94,109 @@ def _fmt(vals) -> str:
 
 # ── renaming ──────────────────────────────────────────────────────────────────
 
-_NAMED_TAGS = {"body", "joint", "geom", "site"}
+_REF_TYPES = {"body":"body", "body1":"body", "body2":"body", "target":"body",
+              "joint":"joint", "joint1":"joint", "joint2":"joint",
+              "geom":"geom", "geom1":"geom", "geom2":"geom", "sidesite":"site",
+              "site":"site", "site1":"site", "site2":"site", "refsite":"site",
+              "cranksite":"site", "slidersite":"site", "tendon":"tendon",
+              "tendon1":"tendon", "tendon2":"tendon", "actuator":"actuator"}
+_BODY_TYPES = {"body","joint","freejoint","geom","site","camera","light"}
 
-
-def _suffix_names(elem: ET.Element, suffix: str) -> None:
-    """Append ``suffix`` to name attributes of bodies/joints/geoms/sites."""
-    for e in elem.iter():
-        if e.tag in _NAMED_TAGS and "name" in e.attrib:
-            e.set("name", e.attrib["name"] + suffix)
-
-
-# ── main build ─────────────────────────────────────────────────────────────────
 
 def build_array(src_xml: str, count: int, *, radius_m: float,
                 base_rot_deg: float = 0.0, tilt_deg: float = 0.0,
                 out_path: str = None) -> str:
-    tree = ET.parse(src_xml)
-    root = tree.getroot()
-    worldbody = root.find("worldbody")
-    if worldbody is None:
-        raise ValueError("No <worldbody> in source XML.")
+    from pathlib import Path
+    if isinstance(count, bool) or not isinstance(count, int) or count < 1:
+        raise ValueError("count must be an integer >= 1")
+    if not all(math.isfinite(v) for v in (radius_m, base_rot_deg, tilt_deg)) or radius_m < 0:
+        raise ValueError("radius must be nonnegative and angles/radius must be finite")
+    source=Path(src_xml).resolve()
+    output=Path(out_path).resolve() if out_path else source.with_name("spirob_array.xml")
+    if source == output: raise ValueError("Array output must differ from source XML")
+    tree=ET.parse(source); root=tree.getroot()
+    # Keyframe state vectors require dimension-aware expansion. Includes must be
+    # resolved before cloning; rejecting prevents a plausible but broken scene.
+    for tag in ("include","keyframe","deformable","extension","attach","replicate"):
+        if root.find(".//"+tag) is not None:
+            raise ValueError(f"Unsupported <{tag}>; provide an expanded single-robot MJCF without keyframes/plugins")
+    world=root.find("worldbody")
+    bodies=[] if world is None else world.findall("body")
+    if len(bodies)!=1: raise ValueError(f"Expected exactly one robot root body, found {len(bodies)}")
+    template=bodies[0]
+    if any(k in template.attrib for k in ("euler","axisangle","xyaxes","zaxis")):
+        raise ValueError("Convert robot root orientation to quat before array generation")
+    pos=_parse_floats(template.get("pos",""),3,(0,0,0))
+    quat=tuple(_parse_floats(template.get("quat",""),4,(1,0,0,0)))
+    norm=math.sqrt(sum(v*v for v in quat))
+    if not norm or not all(math.isfinite(v) for v in (*pos,*quat)):
+        raise ValueError("Invalid robot pose")
+    quat=tuple(v/norm for v in quat)
+    names={}
+    for e in template.iter():
+        if e.tag in _BODY_TYPES and e.get("name"):
+            kind="joint" if e.tag=="freejoint" else e.tag
+            names.setdefault(kind,set()).add(e.get("name"))
+    for section in ("tendon","actuator","sensor"):
+        for e in root.findall(section+"/*"):
+            if e.get("name"): names.setdefault(section,set()).add(e.get("name"))
 
-    # Identify the robot root body: the worldbody <body> child.
-    robot_bodies = [c for c in worldbody if c.tag == "body"]
-    if len(robot_bodies) != 1:
-        raise ValueError(f"Expected exactly one robot root body, found {len(robot_bodies)}.")
-    robot_root = robot_bodies[0]
+    def references(e):
+        for child in e.iter():
+            for attr,value in child.attrib.items():
+                kind=_REF_TYPES.get(attr)
+                if attr in ("objname","refname"):
+                    kind=child.get("objtype" if attr=="objname" else "reftype")
+                if kind in names and value in names[kind]: yield child,attr,value
 
-    base_pos = _parse_floats(robot_root.attrib.get("pos", ""), 3, (0, 0, 0))
-    base_quat: Quat = tuple(_parse_floats(robot_root.attrib.get("quat", ""), 4, (1, 0, 0, 0)))  # type: ignore
+    def clone(e,suffix,section=None):
+        c=copy.deepcopy(e)
+        for child,attr,value in references(c): child.set(attr,value+suffix)
+        for child in c.iter():
+            if child.get("name"):
+                child.set("name",child.get("name")+suffix)
+        return c
 
-    src_tendon = root.find("tendon")
-    src_actuator = root.find("actuator")
-
-    # Remove the template robot + its tendons/actuators; we re-add per copy.
-    worldbody.remove(robot_root)
-    if src_tendon is not None:
-        root.remove(src_tendon)
-    if src_actuator is not None:
-        root.remove(src_actuator)
-
-    new_tendon = ET.SubElement(root, "tendon") if src_tendon is not None else None
-    new_actuator = ET.SubElement(root, "actuator") if src_actuator is not None else None
-
-    z0 = base_pos[2]
+    # Resolve assets before relocation. Keep one shared copy of each asset.
+    compiler=root.find("compiler")
+    settings={} if compiler is None else dict(compiler.attrib)
+    for asset in root.findall("asset/*"):
+        file=asset.get("file")
+        if not file: continue
+        folder=settings.get("meshdir" if asset.tag=="mesh" else "texturedir",settings.get("assetdir",""))
+        asset_path=Path(file)
+        if settings.get("strippath","false")=="true": asset_path=Path(asset_path.name)
+        if not asset_path.is_absolute(): asset_path=source.parent/folder/asset_path
+        asset.set("file",str(asset_path.resolve()))
+    if compiler is not None:
+        for key in ("meshdir","texturedir","assetdir","strippath"): compiler.attrib.pop(key,None)
+    sections={}
+    for name in ("tendon","actuator","sensor","contact","equality"):
+        section=root.find(name)
+        if section is not None:
+            sections[name]=[]
+            for e in list(section):
+                if name in ("tendon","actuator") or list(references(e)):
+                    sections[name].append(e); section.remove(e)
+    world.remove(template)
     for k in range(count):
-        suffix = f"_r{k}"
-        theta = math.radians(base_rot_deg) + 2.0 * math.pi * k / count
-
-        # Placement: on a circle in the XY plane, then rotate the robot about
-        # world Z by theta and tilt about the radial (outward) axis.
-        cx, cy = radius_m * math.cos(theta), radius_m * math.sin(theta)
-        q_spin = quat_axis_angle((0, 0, 1), theta)
-        radial = (math.cos(theta), math.sin(theta), 0.0)
-        q_tilt = quat_axis_angle(radial, math.radians(tilt_deg))
-        world_quat = quat_mul(q_tilt, quat_mul(q_spin, base_quat))
-
-        body = copy.deepcopy(robot_root)
-        _suffix_names(body, suffix)
-        body.set("pos", _fmt((cx, cy, z0)))
-        body.set("quat", _fmt(world_quat))
-        worldbody.append(body)
-
-        # Clone tendons, renaming tendon names + their site references.
-        if src_tendon is not None:
-            for sp in src_tendon:
-                sp2 = copy.deepcopy(sp)
-                if "name" in sp2.attrib:
-                    sp2.set("name", sp2.attrib["name"] + suffix)
-                for site_ref in sp2.iter("site"):
-                    if "site" in site_ref.attrib:
-                        site_ref.set("site", site_ref.attrib["site"] + suffix)
-                new_tendon.append(sp2)
-
-        # Clone actuators, renaming actuator names + their tendon references.
-        if src_actuator is not None:
-            for act in src_actuator:
-                act2 = copy.deepcopy(act)
-                if "name" in act2.attrib:
-                    act2.set("name", act2.attrib["name"] + suffix)
-                if "tendon" in act2.attrib:
-                    act2.set("tendon", act2.attrib["tendon"] + suffix)
-                new_actuator.append(act2)
-
-    out_path = out_path or os.path.join(os.path.dirname(os.path.abspath(src_xml)),
-                                        "spirob_array.xml")
-    try:
-        ET.indent(tree, space="  ")   # py3.9+
-    except Exception:
-        pass
-    tree.write(out_path, encoding="utf-8", xml_declaration=True)
-    print(f"  ✓ array XML ({count} robots, radius={radius_m} m) → {out_path}")
-    return out_path
+        suffix=f"_r{k}"; theta=math.radians(base_rot_deg)+2*math.pi*k/count
+        q_spin=quat_axis_angle((0,0,1),theta)
+        q_tilt=quat_axis_angle((math.cos(theta),math.sin(theta),0),math.radians(tilt_deg))
+        body=clone(template,suffix)
+        body.set("pos",_fmt((pos[0]+radius_m*math.cos(theta),pos[1]+radius_m*math.sin(theta),pos[2])))
+        body.set("quat",_fmt(quat_mul(q_tilt,quat_mul(q_spin,quat))))
+        world.append(body)
+        for name,elements in sections.items():
+            for e in elements: root.find(name).append(clone(e,suffix,name))
+    output.parent.mkdir(parents=True,exist_ok=True)
+    ET.indent(tree,space="  ")
+    # Compile first: catches dangling references and malformed assets before write.
+    import mujoco
+    mujoco.MjModel.from_xml_string(ET.tostring(root,encoding="unicode"))
+    tree.write(output,encoding="utf-8",xml_declaration=True)
+    print(f"Array compiled: {count} robots -> {output}")
+    return str(output)
 
 
 def main():

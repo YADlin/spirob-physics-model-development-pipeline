@@ -451,12 +451,23 @@ def test_cli_still_accepts_the_documented_flags(params, csv_path, tmp_path):
     assert len(os.listdir(str(tmp_path / "cli"))) == 21
 
 
-def test_build_py_invocation_is_unchanged():
-    """The STL step's command line must not have shifted."""
-    src = _read_text(os.path.join(_ROOT, "build.py"))
-    assert "python csv2geom_nlobe.py" in src
-    assert "--in Geom_Data_CSV/Spirob_geom_data.csv" in src
-    assert "--params {args.params}" in src
+def test_build_py_preserves_stl_arguments_as_separate_tokens(tmp_path, monkeypatch):
+    """The driver must preserve parameters and CSV arguments, including spaces."""
+    import build
+    pfile = tmp_path / "my params.json"
+    pfile.write_text(_read_text(os.path.join(_ROOT, "params.json")), encoding="utf-8")
+    seen = []
+    def capture(argv, desc, cwd):
+        if str(argv[0]).endswith("csv2geom_nlobe.py"):
+            seen.extend(map(str, argv))
+            raise RuntimeError("captured STL command")
+    monkeypatch.setattr(build, "run_step", capture)
+    monkeypatch.setattr(sys, "argv", ["build.py", "--params", str(pfile),
+                                    "--no-preview", "--output-dir", str(tmp_path / "outputs")])
+    with pytest.raises(RuntimeError, match="captured STL command"):
+        build.main()
+    assert seen[seen.index("--in") + 1] == "Geom_Data_CSV/Spirob_geom_data.csv"
+    assert seen[seen.index("--params") + 1] == str(pfile)
 
 
 def test_f08_tendon_rule_untouched():

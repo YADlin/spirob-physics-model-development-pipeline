@@ -1,168 +1,120 @@
+"""Build CSV -> simulation meshes -> MJCF, with optional fabrication CAD.
+
+Every stage uses this interpreter and a fresh temporary output directory. Failed
+builds leave the previous outputs in place. Simulation names and physics remain
+owned by the existing generators.
 """
-build.py  —  SpiRob pipeline driver.
-
-Usage
------
-  python build.py                        # interactive preview, then full pipeline
-  python build.py --plain                # plain revolve (no n-lobe cut)
-  python build.py --no-preview           # skip preview gate (CI / batch)
-  python build.py --noclean              # keep previous outputs
-  python build.py --safe / --fast / --high   # physics preset passed to csv2xml
-  python build.py --cad                  # also export a whole-robot STEP + solid STL
-  python build.py --cad --fuse-cad       # ...as one boolean-fused solid (slower)
-
-Cross-section is driven by n_cables in params.json:
-  n_cables <= 2   →  flat extrusion  (hinge joints)
-  n_cables >= 3   →  n-lobe cut
-  --plain         →  full solid of revolution regardless of n_cables
-"""
-
-import subprocess
-import sys
-import os
-import shutil
+from __future__ import annotations
 import argparse
 import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+
+ROOT = Path(__file__).resolve().parent
 
 
-def run_step(cmd, desc, check=True):
-    print(f"\n=== {desc} ===")
-    result = subprocess.run(cmd, shell=True)
-    if check and result.returncode != 0:
-        print(f"❌  {desc} failed with exit code {result.returncode}")
-        sys.exit(result.returncode)
-    return result.returncode
+def run_step(argv, desc, cwd):
+    print(f'\n{desc}', flush=True)
+    env = dict(os.environ, PYTHONIOENCODING='utf-8')
+    subprocess.run([sys.executable, *map(str, argv)], cwd=cwd, env=env, check=True)
 
 
-def clean_outputs():
-    print("\n=== Cleaning old outputs ===")
-    for t in ["Geom_Data_CSV", "meshes", "spirob_physics_model.xml"]:
-        if os.path.isdir(t):
-            shutil.rmtree(t);  print(f"🗑️   Removed directory: {t}")
-        elif os.path.isfile(t):
-            os.remove(t);      print(f"🗑️   Removed file: {t}")
-
-
-def run_preview_gate(params_path, nlobe=False):
-    print("\n=== Launching geometry preview ===")
-    cmd = f"python preview.py --params {params_path}"
-    if nlobe:
-        cmd += " --nlobe"
-    result = subprocess.run(cmd, shell=True)
-    if result.returncode != 0:
-        print("\n❌  Preview rejected or closed. Pipeline aborted.")
-        print("    Adjust params.json and re-run.")
-        return False
-    return True
+def verify_meshes(directory, geometry):
+    import struct
+    expected = {u.link_name+'.stl' for u in geometry.units}
+    actual = {p.name for p in Path(directory).glob('*.stl')}
+    if actual != expected:
+        raise ValueError(f'Incomplete mesh set: missing={sorted(expected-actual)}, unexpected={sorted(actual-expected)}')
+    for name in expected:
+        data = (Path(directory)/name).read_bytes()
+        if len(data) < 84:
+            raise ValueError(f'{name}: incomplete binary STL')
+        n = struct.unpack_from('<I', data, 80)[0]
+        if n == 0 or len(data) != 84+50*n:
+            raise ValueError(f'{name}: invalid binary STL triangle count')
 
 
 def main():
-    parser = argparse.ArgumentParser(description="SpiRob pipeline build script")
-    parser.add_argument("--params",     default="params.json",
-                        help="Path to params.json (default: params.json)")
-    parser.add_argument("--noclean",    action="store_true",
-                        help="Skip cleaning old outputs before running")
-    parser.add_argument("--no-preview", action="store_true",
-                        help="Skip the interactive preview gate (CI / batch use)")
-    parser.add_argument("--plain",      action="store_true",
-                        help="Plain revolve — no n-lobe cut (full solid of revolution)")
-    parser.add_argument("--safe",       action="store_true", help="MuJoCo safe-mode preset")
-    parser.add_argument("--fast",       action="store_true", help="MuJoCo fast-mode preset")
-    parser.add_argument("--high",       action="store_true", help="MuJoCo high-fidelity preset")
-    parser.add_argument("--cad",        action="store_true",
-                        help="Also export a whole-robot STEP + solid STL to cad/ (for printing/CAD)")
-    parser.add_argument("--fuse-cad",   action="store_true",
-                        help="With --cad, boolean-union elements into one solid (slower, cleaner)")
-    args = parser.parse_args()
-
-    # ── Load & validate params ────────────────────────────────────────────────
-    with open(args.params) as f:
-        params = json.load(f)
-
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--params',default='params.json')
+    p.add_argument('--output-dir',default='.',help='Destination for generated outputs')
+    p.add_argument('--noclean',action='store_true',help='Compatibility flag; builds always use fresh staging')
+    p.add_argument('--no-preview',action='store_true')
+    section = p.add_mutually_exclusive_group()
+    section.add_argument('--plain',action='store_true')
+    section.add_argument('--nlobe',action='store_true',help='Compatibility alias: use the n_cables cross-section')
+    physics = p.add_mutually_exclusive_group()
+    for name in ('safe','fast','high'): physics.add_argument('--'+name,action='store_true')
+    p.add_argument('--cad',action='store_true')
+    p.add_argument('--fuse-cad',action='store_true')
+    p.add_argument('--cad-profile',choices=['fabrication','simulation'],default='fabrication')
+    p.add_argument('--flat-thickness-m',type=float); p.add_argument('--flat-edge-ratio',type=float)
+    p.add_argument('--neck-width-mm',type=float,default=1.0)
+    p.add_argument('--cable-hole-diameter-mm',type=float,default=0.0)
+    a=p.parse_args()
+    if a.fuse_cad and not a.cad: p.error('--fuse-cad requires --cad')
+    params_path = Path(a.params).resolve()
+    params = json.loads(params_path.read_text(encoding='utf-8'))
     from spirob_csv_generator import validate_params
-    try:
-        validate_params(params)
-    except ValueError as e:
-        print(f"\n❌ Parameter error:\n{e}\n")
-        print("Please fix params.json and re-run.")
-        sys.exit(1)
+    from spirob.geometry import from_params
+    validate_params(params)
+    geometry = from_params(params)
+    if not a.no_preview:
+        preview=[ROOT/'preview.py','--params',params_path]
+        if not a.plain and params['n_cables']>=3: preview.append('--nlobe')
+        run_step(preview,'Geometry preview',ROOT)
+    output = Path(a.output_dir).resolve(); output.mkdir(parents=True,exist_ok=True)
+    # Stage alongside the destination so publishing uses same-filesystem renames.
+    with tempfile.TemporaryDirectory(prefix='.spirob-build-',dir=output.parent) as td:
+        stage=Path(td)
+        run_step([ROOT/'spirob_csv_generator.py','--params',params_path,'--yes'],'Generate CSV',stage)
+        csv=Path('Geom_Data_CSV/Spirob_geom_data.csv')
+        mesh=[ROOT/'csv2geom_nlobe.py','--in',csv,'--params',params_path]
+        if a.plain: mesh.append('--plain')
+        run_step(mesh,'Generate simulation meshes',stage)
+        verify_meshes(stage/'meshes',geometry)
+        xml=[ROOT/'csv2xml.py','--in',csv,'--out','spirob_physics_model.xml',
+             '--params',params_path,'--tendon-shift',params['tendon_inward_shift'],
+             '--phi-deg',params['phi_deg']]
+        if params['n_cables']==2 and not a.plain: xml.append('--hinge')
+        for name in ('safe','fast','high'):
+            if getattr(a,name): xml.append('--'+name)
+        run_step(xml,'Generate MJCF',stage)
+        import mujoco
+        model=mujoco.MjModel.from_xml_path(str(stage/'spirob_physics_model.xml'))
+        if model.ntendon != params['n_cables'] or model.nu != params['n_cables']:
+            raise ValueError('Compiled MJCF cable/actuator count mismatch')
+        if a.cad:
+            cad=[ROOT/'cad_export.py','--in',csv,'--params',params_path,'--profile',a.cad_profile,
+                 '--neck-width-mm',a.neck_width_mm,'--cable-hole-diameter-mm',a.cable_hole_diameter_mm]
+            if a.plain: cad.append('--plain')
+            if a.fuse_cad: cad.append('--fuse')
+            for key in ('flat_thickness_m','flat_edge_ratio'):
+                if getattr(a,key) is not None: cad.extend(['--'+key.replace('_','-'),getattr(a,key)])
+            run_step(cad,'Export CAD in millimetres',stage)
+        # Stages validated. Roll back replacements if publishing itself fails.
+        backup=stage/'previous'; backup.mkdir()
+        published=[]; moved=[]
+        names=['Geom_Data_CSV','meshes','spirob_physics_model.xml']+(['cad'] if a.cad else [])
+        try:
+            for name in names:
+                dest=output/name
+                if dest.exists(): dest.rename(backup/name); moved.append(name)
+                (stage/name).rename(dest); published.append(name)
+        except Exception:
+            for name in reversed(published):
+                dest=output/name
+                if dest.is_dir(): shutil.rmtree(dest)
+                else: dest.unlink()
+            for name in moved: (backup/name).rename(output/name)
+            raise
+    print(f'Build completed and MJCF compiled: {output}')
 
-    n_cables     = int(params["n_cables"])
-    tendon_shift = float(params["tendon_inward_shift"])
-    phi_deg      = float(params["phi_deg"])
-    use_nlobe    = (not args.plain) and (n_cables >= 3)
-
-    # ── Step 0: Preview ───────────────────────────────────────────────────────
-    if not args.no_preview:
-        approved = run_preview_gate(args.params, nlobe=use_nlobe)
-        if not approved:
-            sys.exit(1)
-    else:
-        print("\n=== Skipping preview (--no-preview) ===")
-
-    # ── Clean ─────────────────────────────────────────────────────────────────
-    if not args.noclean:
-        clean_outputs()
-    else:
-        print("\n=== Skipping clean (--noclean) ===")
-
-    # ── Step 1: CSV ───────────────────────────────────────────────────────────
-    run_step(
-        f"python spirob_csv_generator.py --params {args.params} --yes",
-        "Generating CSV"
-    )
-
-    # ── Step 2: STL ───────────────────────────────────────────────────────────
-    stl_cmd = (f"python csv2geom_nlobe.py "
-               f"--in Geom_Data_CSV/Spirob_geom_data.csv "
-               f"--params {args.params}")
-    if args.plain:
-        stl_cmd += " --plain"
-        stl_desc = "Generating STL meshes (plain revolve)"
-    elif n_cables <= 2:
-        stl_desc = "Generating STL meshes (flat extrusion)"
-    else:
-        stl_desc = f"Generating STL meshes ({n_cables}-lobe)"
-
-    stl_exit = run_step(stl_cmd, stl_desc, check=False)
-    if not os.path.isdir("meshes") or not os.listdir("meshes"):
-        print("❌  No STL files generated — treating as failure.")
-        sys.exit(stl_exit or 1)
-    elif stl_exit != 0:
-        print(f"⚠️   STL generator exited {stl_exit} but meshes exist — continuing…")
-
-    # ── Step 3: XML ───────────────────────────────────────────────────────────
-    xml_cmd = (f"python csv2xml.py "
-               f"--in Geom_Data_CSV/Spirob_geom_data.csv "
-               f"--out spirob_physics_model.xml "
-               f"--tendon-shift {tendon_shift} "
-               f"--phi-deg {phi_deg} "
-               f"--params {args.params}")
-
-    if n_cables <= 2 and not args.plain:
-        xml_cmd += " --hinge"
-    if args.safe:
-        xml_cmd += " --safe"
-    elif args.fast:
-        xml_cmd += " --fast"
-    elif args.high:
-        xml_cmd += " --high"
-
-    run_step(xml_cmd, "Generating XML model")
-
-    # ── Step 4 (optional): whole-robot solid CAD export ───────────────────────
-    if args.cad:
-        cad_cmd = (f"python cad_export.py "
-                   f"--in Geom_Data_CSV/Spirob_geom_data.csv "
-                   f"--params {args.params} --outdir cad")
-        if args.plain:
-            cad_cmd += " --plain"
-        if args.fuse_cad:
-            cad_cmd += " --fuse"
-        run_step(cad_cmd, "Exporting whole-robot STEP + solid STL")
-
-    print("\n✅  Pipeline completed successfully!")
-
-
-if __name__ == "__main__":
-    main()
+if __name__=='__main__':
+    try: main()
+    except (ValueError,OSError,subprocess.CalledProcessError) as exc:
+        print(f'Build failed: {exc}',file=sys.stderr); sys.exit(1)

@@ -56,6 +56,16 @@ def validate_params(p: dict):
     if errors:                          # can't continue without core keys
         raise ValueError("Missing required parameters:\n" + "\n".join(errors))
 
+    # Reject non-numbers, booleans and non-finite values before comparisons.
+    # In particular NaN otherwise passes ordinary <= 0 checks.
+    import math
+    for key in ("L", "d_tip", "phi_deg", "Delta_theta_deg", "tendon_inward_shift"):
+        value = p[key]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            errors.append(f"  • '{key}' must be a finite number")
+    if errors:
+        raise ValueError("Invalid numeric parameters:\n" + "\n".join(errors))
+
     L               = p["L"]
     d_tip           = p["d_tip"]
     phi_deg         = p["phi_deg"]

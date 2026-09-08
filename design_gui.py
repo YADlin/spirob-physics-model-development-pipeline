@@ -1,212 +1,203 @@
+"""Desktop design tool for the canonical SpiRob pipeline (Tk + Matplotlib).
+
+Feature inspiration: OpenSpiRobs; implemented with this repository's geometry.
+Worker threads only enqueue messages. Tk widgets are accessed by the main thread.
 """
-design_gui.py  —  Lightweight desktop GUI for the SpiRob pipeline.
-
-A params-driven front end that wraps the existing command-line pipeline: edit
-the physical parameters with live 2-D preview (side profile + cross-section),
-then build the MuJoCo model, export a printable STEP/STL, generate a robot
-array, or open the model in the MuJoCo viewer — all without touching a terminal.
-
-It reuses this repo's own geometry and preview code (``spirob/geometry.py`` and
-``preview.py``) for the live drawing, and shells out to ``build.py`` /
-``cad_export.py`` / ``tools/multi_array.py`` for the heavy steps, so there is a
-single source of truth for the maths.
-
-Built on Tkinter + Matplotlib (both already available — no new dependency).
-
-Design note
------------
-Clean-room reimplementation for this pipeline. The idea of a GUI design tool for
-spiral robots is inspired by the OpenSpiRobs design tool (Zhanchi Wang et al.;
-https://github.com/ZhanchiWang/Open-Spiral-Robots, PolyForm-Noncommercial). No
-code from that project is used here; this is a thin Tk wrapper over this repo's
-MIT-licensed pipeline. That tool is PySide6 and 2/3-cable only; this one is
-stdlib Tk and supports the full n-cable range this repo generates.
-
-Run
----
-  python design_gui.py                 # loads params.json
-  python design_gui.py --params my.json
-"""
-
 from __future__ import annotations
-
 import argparse
 import json
 import os
+from pathlib import Path
+import queue
 import subprocess
 import sys
 import threading
 
-# --- numeric params shown as editable fields -----------------------------------
-_FIELDS = [
-    ("L",                   "Total length L (m)"),
-    ("d_tip",               "Tip diameter (m)"),
-    ("phi_deg",             "Taper angle φ (deg)"),
-    ("Delta_theta_deg",     "Δθ per element (deg)"),
-    ("n_cables",            "Number of cables"),
-    ("tendon_inward_shift", "Tendon inward shift (m)"),
-    ("nlobe_t",             "n-lobe t (0..1)"),
-    ("notch_factor",        "Notch factor (0..0.4)"),
-    ("flat_thickness_ratio","Flat thickness ratio"),
-]
+ROOT=Path(__file__).resolve().parent
+_FIELDS=[('L','Continuous length (m)'),('d_tip','Nominal tip width (m)'),
+         ('phi_deg','Full taper angle (deg)'),('Delta_theta_deg','Segment angle (deg)'),
+         ('n_cables','Cables'),('tendon_inward_shift','Cable inward shift (m)'),
+         ('nlobe_t','n-lobe t'),('notch_factor','Notch factor'),
+         ('flat_thickness_ratio','Flat thickness ratio')]
 
 
-def launch(params_path: str = "params.json") -> None:
-    import tkinter as tk
-    from tkinter import ttk, messagebox
-
-    import matplotlib
-    matplotlib.use("TkAgg")
-    from matplotlib.figure import Figure
-    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-
-    # Repo helpers (imported lazily so the module imports without a display).
+def collect_params(original, values):
     from spirob_csv_generator import validate_params
-    import preview as pv
+    from spirob.geometry import from_params
+    p=dict(original)
+    for key,raw in values.items():
+        p[key]=int(raw) if key=='n_cables' else float(raw)
+    validate_params(p); from_params(p)
+    return p
 
-    repo_dir = os.path.dirname(os.path.abspath(__file__))
 
-    with open(params_path, encoding="utf-8") as f:
-        params = json.load(f)
+def build_command(params_path, output_dir, *, cad=False, profile='fabrication',
+                  neck_width_mm=1, cable_hole_diameter_mm=0):
+    cmd=[sys.executable,str(ROOT/'build.py'),'--no-preview','--params',str(Path(params_path).resolve()),
+         '--output-dir',str(Path(output_dir).resolve())]
+    if cad:
+        cmd += ['--cad','--cad-profile',profile,'--neck-width-mm',str(neck_width_mm),
+                '--cable-hole-diameter-mm',str(cable_hole_diameter_mm)]
+    return cmd
 
-    root = tk.Tk()
-    root.title("SpiRob Design Tool")
-    root.geometry("1120x720")
 
-    # ── layout: left = controls, right = preview + log ────────────────────────
-    left = ttk.Frame(root, padding=10); left.pack(side="left", fill="y")
-    right = ttk.Frame(root, padding=6); right.pack(side="right", fill="both", expand=True)
+class DesignApp:
+    def __init__(self, root, params_path, output_dir):
+        import tkinter as tk
+        from tkinter import ttk
+        from matplotlib.figure import Figure
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+        self.root=root; self.params_path=Path(params_path).resolve()
+        self.params=json.loads(self.params_path.read_text(encoding='utf-8'))
+        self.messages=queue.Queue(); self.busy=False; self.process=None
+        self.values={}; self.buttons=[]
+        root.title('SpiRob Design Tool'); root.geometry('1240x850')
+        controls=ttk.Frame(root,padding=10); controls.pack(side='left',fill='y')
+        display=ttk.Frame(root,padding=10); display.pack(side='right',fill='both',expand=True)
+        ttk.Label(controls,text='Geometry',font=('',13,'bold')).pack(anchor='w')
+        form=ttk.Frame(controls); form.pack(fill='x')
+        for i,(key,label) in enumerate(_FIELDS):
+            ttk.Label(form,text=label).grid(row=i,column=0,sticky='w',pady=2)
+            value=tk.StringVar(value=str(self.params.get(key,''))); self.values[key]=value
+            ttk.Entry(form,textvariable=value,width=14).grid(row=i,column=1)
+        self.output=tk.StringVar(value=str(Path(output_dir).resolve()))
+        ttk.Label(controls,text='Output folder').pack(anchor='w',pady=(8,0))
+        ttk.Entry(controls,textvariable=self.output,width=38).pack(fill='x')
+        self.add_button(controls,'Choose output folder',self.choose_output)
+        self.profile=tk.StringVar(value='fabrication')
+        ttk.Label(controls,text='CAD profile').pack(anchor='w',pady=(8,0))
+        ttk.Combobox(controls,textvariable=self.profile,values=['fabrication','simulation'],state='readonly').pack(fill='x')
+        self.neck=tk.StringVar(value='1'); self.hole=tk.StringVar(value='0')
+        self.count=tk.StringVar(value='6'); self.radius=tk.StringVar(value='0.12')
+        extra=ttk.Frame(controls); extra.pack(fill='x',pady=6)
+        for i,(label,var) in enumerate([('Flexure width (mm)',self.neck),('Cable hole diameter (mm; 0=off)',self.hole),('Array robot count',self.count),('Array radius (m)',self.radius)]):
+            ttk.Label(extra,text=label).grid(row=i,column=0,sticky='w')
+            ttk.Entry(extra,textvariable=var,width=10).grid(row=i,column=1)
+        for label,fn in [('Update geometry preview',self.preview),('Save parameters',self.save),
+                         ('Build simulation model',lambda:self.build(False)),
+                         ('Build + export STEP/STL',lambda:self.build(True)),
+                         ('Preview exported CAD',self.preview_cad),('Split fabrication file',self.split),
+                         ('Generate robot array',self.array),('Open MuJoCo viewer',self.viewer)]:
+            self.add_button(controls,label,fn)
+        ttk.Label(controls,text='CAD/STL export: millimetres\nSimulation meshes: metres\nFabrication dimensions require calibration.',wraplength=310).pack(anchor='w',pady=8)
+        self.figure=Figure(figsize=(7,5),dpi=100)
+        self.canvas=FigureCanvasTkAgg(self.figure,master=display)
+        self.canvas.get_tk_widget().pack(fill='both',expand=True)
+        self.log=tk.Text(display,height=12,wrap='word'); self.log.pack(fill='x')
+        root.after(100,self.poll)
+        self.preview()
 
-    ttk.Label(left, text="Parameters", font=("", 12, "bold")).pack(anchor="w")
-    entries = {}
-    form = ttk.Frame(left); form.pack(fill="x", pady=6)
-    for i, (key, label) in enumerate(_FIELDS):
-        ttk.Label(form, text=label).grid(row=i, column=0, sticky="w", pady=2)
-        var = tk.StringVar(value=str(params.get(key, "")))
-        ent = ttk.Entry(form, textvariable=var, width=12)
-        ent.grid(row=i, column=1, sticky="e", padx=4)
-        entries[key] = var
+    def add_button(self,parent,label,fn):
+        from tkinter import ttk
+        b=ttk.Button(parent,text=label,command=fn); b.pack(fill='x',pady=2); self.buttons.append(b)
 
-    fig = Figure(figsize=(6.4, 5.4), dpi=100)
-    ax_side = fig.add_subplot(1, 2, 1)
-    ax_sec = fig.add_subplot(1, 2, 2)
-    canvas = FigureCanvasTkAgg(fig, master=right)
-    canvas.get_tk_widget().pack(fill="both", expand=True)
+    def note(self,message):
+        self.log.insert('end',message+'\n'); self.log.see('end')
 
-    log = tk.Text(right, height=8, wrap="word")
-    log.pack(fill="x", pady=(6, 0))
+    def collect(self): return collect_params(self.params,{k:v.get() for k,v in self.values.items()})
 
-    def logln(msg: str) -> None:
-        log.insert("end", msg + "\n"); log.see("end"); root.update_idletasks()
-
-    def collect_params() -> dict:
-        p = dict(params)  # keep post_gen and other keys
-        for key, var in entries.items():
-            raw = var.get().strip()
-            if raw == "":
-                continue
-            p[key] = int(raw) if key == "n_cables" else float(raw)
-        return p
-
-    def refresh_preview() -> None:
+    def save(self):
+        from tkinter import messagebox
+        if self.busy: return False
         try:
-            p = collect_params()
-            validate_params(p)
-            quads = pv._build_quads(p)
-            stats = pv._element_stats(quads)
-            outer_radius = stats[0]["w_bottom"] / 2.0
-            n = int(p["n_cables"])
-
-            ax_side.clear(); ax_sec.clear()
-            # Side profile: draw each quad polygon. Quads are 2-D (x, z).
-            for st in stats:
-                q = st["quad"]
-                xs = [pt[0] for pt in q] + [q[0][0]]
-                zs = [pt[1] for pt in q] + [q[0][1]]
-                ax_side.plot(xs, zs, "-", lw=0.7, color="#1f77b4")
-            ax_side.set_aspect("equal"); ax_side.set_title("Side profile")
-            ax_side.set_xlabel("x (m)"); ax_side.set_ylabel("z (m)")
-
-            if n >= 3:
-                pv.draw_nlobe_section(ax_sec, outer_radius, n, p,
-                                      title=f"{n}-lobe section")
-            else:
-                pv.draw_flat_section(ax_sec, outer_radius, p,
-                                     title=f"{n}-cable flat section",
-                                     quad=stats[0]["quad"])
-            canvas.draw()
-            logln(f"Preview OK — {len(stats)} elements, outer Ø="
-                  f"{outer_radius*2*1000:.2f} mm")
+            p=self.collect()
+            self.params_path.write_text(json.dumps(p,indent=2)+'\n',encoding='utf-8')
+            self.params=p; self.note(f'Saved {self.params_path}')
+            return True
         except Exception as e:
-            logln(f"⚠ preview error: {e}")
+            messagebox.showerror('Invalid parameters',str(e)); return False
 
-    def save_params() -> None:
+    def choose_output(self):
+        from tkinter import filedialog
+        path=filedialog.askdirectory(initialdir=self.output.get())
+        if path:self.output.set(path)
+
+    def preview(self):
+        from spirob.geometry import from_params
+        import preview as pv
         try:
-            p = collect_params()
-            validate_params(p)
-            with open(params_path, "w", encoding="utf-8") as f:
-                json.dump(p, f, indent=2)
-            params.update(p)
-            logln(f"Saved → {params_path}")
-        except Exception as e:
-            messagebox.showerror("Save failed", str(e))
+            p=self.collect(); g=from_params(p)
+            self.figure.clear(); ax=self.figure.add_subplot(121); sec=self.figure.add_subplot(122)
+            for q in g.inverted_quads():
+                for sign in (-1,1):
+                    xs=[sign*pt[0]*1000 for pt in q]+[sign*q[0][0]*1000]
+                    zs=[pt[1]*1000 for pt in q]+[q[0][1]*1000]
+                    ax.plot(xs,zs,lw=.8,color='#007e99')
+            ax.set_aspect('equal'); ax.set_title('Canonical segment profile'); ax.set_xlabel('x (mm)'); ax.set_ylabel('z (mm)')
+            r=g.lengths.realized_root_width_m/2
+            if p['n_cables']>=3: pv.draw_nlobe_section(sec,r,p['n_cables'],p,title='Simulation section')
+            else: pv.draw_flat_section(sec,r,p,title='Simulation section',quad=g.inverted_quads()[0])
+            self.figure.tight_layout(); self.canvas.draw_idle()
+            lr=g.lengths
+            self.note(f'{lr.n_units_total} elements; continuous {lr.requested_continuous_length_m*1000:.3f} mm; chord chain {lr.discrete_chord_length_m*1000:.3f} mm. Use exported CAD preview to inspect the fabrication lens/holes.')
+        except Exception as e:self.note(f'Preview error: {e}')
 
-    def _run_async(cmd: list, desc: str) -> None:
+    def run(self,cmd):
+        if self.busy:return
+        self.busy=True
+        for b in self.buttons:b.configure(state='disabled')
+        self.note('Running: '+' '.join(cmd))
         def worker():
-            logln(f"$ {' '.join(cmd)}")
             try:
-                proc = subprocess.run(cmd, cwd=repo_dir, capture_output=True, text=True)
-                tail = (proc.stdout or "").strip().splitlines()[-6:]
-                for ln in tail:
-                    logln("  " + ln)
-                logln(f"{'✅' if proc.returncode == 0 else '❌'} {desc} "
-                      f"(exit {proc.returncode})")
-                if proc.returncode != 0 and proc.stderr:
-                    for ln in proc.stderr.strip().splitlines()[-4:]:
-                        logln("  ! " + ln)
-            except Exception as e:
-                logln(f"❌ {desc}: {e}")
-        threading.Thread(target=worker, daemon=True).start()
+                with subprocess.Popen(cmd,cwd=ROOT,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
+                                      text=True,encoding='utf-8',errors='replace',
+                                      env=dict(os.environ,PYTHONIOENCODING='utf-8')) as proc:
+                    self.process=proc
+                    for line in proc.stdout:self.messages.put(('log',line.rstrip()))
+                    code=proc.wait()
+                    self.messages.put(('log',f'Completed, exit {code}'))
+            except Exception as e:self.messages.put(('log',f'Failed: {e}'))
+            finally:self.process=None; self.messages.put(('done',None))
+        threading.Thread(target=worker,daemon=True).start()
 
-    def do_build() -> None:
-        save_params()
-        _run_async([sys.executable, "build.py", "--no-preview", "--params",
-                    params_path], "Build (CSV→STL→XML)")
+    def poll(self):
+        try:
+            while True:
+                kind,msg=self.messages.get_nowait()
+                if kind=='log':self.note(msg)
+                else:
+                    self.busy=False
+                    for b in self.buttons:b.configure(state='normal')
+        except queue.Empty:pass
+        self.root.after(100,self.poll)
 
-    def do_cad() -> None:
-        _run_async([sys.executable, "cad_export.py", "--params", params_path],
-                   "Export STEP + solid STL")
+    def build(self,cad):
+        if not self.save():return
+        self.run(build_command(self.params_path,self.output.get(),cad=cad,profile=self.profile.get(),
+                               neck_width_mm=self.neck.get(),cable_hole_diameter_mm=self.hole.get()))
 
-    def do_array() -> None:
-        _run_async([sys.executable, "tools/multi_array.py",
-                    "--in", "spirob_physics_model.xml", "--count", "6"],
-                   "Generate 6-robot array")
+    def preview_cad(self):
+        try:
+            import trimesh
+            from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+            mesh=trimesh.load(Path(self.output.get())/'cad/spirob.stl',force='mesh')
+            self.figure.clear(); ax=self.figure.add_subplot(111,projection='3d')
+            ax.add_collection3d(Poly3DCollection(mesh.triangles,facecolor='#08a3b4',edgecolor='none',alpha=1))
+            lo,hi=mesh.bounds
+            ax.set_xlim(lo[0],hi[0]); ax.set_ylim(lo[1],hi[1]); ax.set_zlim(lo[2],hi[2])
+            ax.set_box_aspect(hi-lo); ax.set_xlabel('x (mm)'); ax.set_ylabel('y (mm)'); ax.set_zlabel('z (mm)')
+            ax.set_title('Last exported CAD (drag to rotate)'); self.canvas.draw_idle()
+        except Exception as e:self.note(f'CAD preview: {e}')
 
-    def do_viewer() -> None:
-        _run_async([sys.executable, "-m", "mujoco.viewer",
-                    "--mjcf=spirob_physics_model.xml"], "Open MuJoCo viewer")
+    def split(self):
+        from tkinter import filedialog,simpledialog
+        path=filedialog.askopenfilename(initialdir=str(Path(self.output.get())/'cad'),filetypes=[('CAD','*.step *.stp *.stl')])
+        if not path:return
+        span=simpledialog.askfloat('Split along Z','Maximum Z span per part (mm):',minvalue=.001,initialvalue=100)
+        if span:self.run([sys.executable,str(ROOT/'fabrication/part_splitter.py'),path,'--max-span-mm',str(span),'--file-units','mm'])
 
-    # ── buttons ───────────────────────────────────────────────────────────────
-    btns = ttk.Frame(left); btns.pack(fill="x", pady=10)
-    ttk.Button(btns, text="Update preview", command=refresh_preview).pack(fill="x", pady=2)
-    ttk.Button(btns, text="Save params.json", command=save_params).pack(fill="x", pady=2)
-    ttk.Separator(btns).pack(fill="x", pady=6)
-    ttk.Button(btns, text="Build model", command=do_build).pack(fill="x", pady=2)
-    ttk.Button(btns, text="Export STEP / STL", command=do_cad).pack(fill="x", pady=2)
-    ttk.Button(btns, text="Generate array", command=do_array).pack(fill="x", pady=2)
-    ttk.Button(btns, text="Open MuJoCo viewer", command=do_viewer).pack(fill="x", pady=2)
+    def array(self):
+        self.run([sys.executable,str(ROOT/'tools/multi_array.py'),'--in',str(Path(self.output.get()).resolve()/'spirob_physics_model.xml'),
+                  '--count',self.count.get(),'--radius-m',self.radius.get()])
 
-    logln("Ready. Edit parameters, Update preview, then Build.")
-    refresh_preview()
-    root.mainloop()
-
-
-def main():
-    p = argparse.ArgumentParser(description="SpiRob design GUI")
-    p.add_argument("--params", default="params.json", help="Path to params.json")
-    args = p.parse_args()
-    launch(args.params)
+    def viewer(self):
+        self.run([sys.executable,'-m','mujoco.viewer','--mjcf='+str(Path(self.output.get()).resolve()/'spirob_physics_model.xml')])
 
 
-if __name__ == "__main__":
-    main()
+def launch(params_path='params.json',output_dir='.'):
+    import tkinter as tk
+    root=tk.Tk(); DesignApp(root,params_path,output_dir); root.mainloop()
+
+if __name__=='__main__':
+    p=argparse.ArgumentParser(description=__doc__); p.add_argument('--params',default='params.json'); p.add_argument('--output-dir',default='.')
+    a=p.parse_args(); launch(a.params,a.output_dir)

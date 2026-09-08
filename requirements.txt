@@ -1,19 +1,7 @@
-﻿cadquery @ git+https://github.com/CadQuery/cadquery.git@d33816099adbc88e9be8ab46c091cff11e2665fa
+# Validated Python environment: 3.12.13. Install in a dedicated virtualenv.
+cadquery==2.6.1
 cadquery-ocp==7.8.1.1.post1
-cadquery_vtk
-matplotlib==3.10.6
-matplotlib-inline==0.1.7
+matplotlib==3.11.1
 mujoco==3.3.5
-numpy==2.3.2
-
-pandas==2.3.2
-
-# ── Optional: fabrication part-splitter, STL path (fabrication/part_splitter.py)
-#    The STEP path needs only cadquery (already above). The STL path needs:
-trimesh
-shapely
-mapbox-earcut
-
-# ── Optional: GUI (design_gui.py) uses Tkinter, which ships with standard
-#    CPython. On Debian/Ubuntu it comes from the system package `python3-tk`
-#    (e.g. `sudo apt install python3-tk`); there is no pip package for it.
+numpy==2.5.3
+pandas==2.2.3

@@ -12,9 +12,9 @@ Formats
 
 Units
 -----
-This repo's exports are numerically in metres. Build-volume and span options are
+Fabrication CAD exports are in millimetres. Simulation link STL files use metres. Build-volume and span options are
 given in millimetres for convenience; ``--file-units`` says what the file's
-numbers mean (default ``m``) so the mm thresholds are converted correctly.
+numbers mean (default ``mm``) so the mm thresholds are converted correctly.
 
 Design note
 -----------
@@ -56,10 +56,16 @@ def plan_cuts(lo: float, hi: float, *, max_span: Optional[float] = None,
     If ``cut_positions`` is given it is used verbatim (filtered to the interval).
     Otherwise the span is divided into the fewest equal parts each ≤ ``max_span``.
     """
-    if cut_positions:
-        return sorted(p for p in cut_positions if lo < p < hi)
-    if not max_span or max_span <= 0:
-        return []
+    if not all(math.isfinite(v) for v in (lo, hi)) or hi <= lo:
+        raise ValueError("Invalid input bounds")
+    if cut_positions is not None:
+        if max_span is not None: raise ValueError("Choose cut positions OR max span")
+        if not cut_positions or any(not math.isfinite(v) or not lo < v < hi for v in cut_positions):
+            raise ValueError("Cut positions must be finite and strictly inside the bounds")
+        if len(set(cut_positions)) != len(cut_positions): raise ValueError("Duplicate cut positions")
+        return sorted(cut_positions)
+    if max_span is None or not math.isfinite(max_span) or max_span <= 0:
+        raise ValueError("max_span must be finite and positive")
     total = hi - lo
     n_parts = max(1, math.ceil(total / max_span - 1e-9))
     if n_parts == 1:
@@ -95,7 +101,7 @@ def split_step(path: str, axis: str, cut_positions: List[float], out_dir: str,
     reports = []
     for i in range(len(edges) - 1):
         a, b = edges[i], edges[i + 1]
-        centre = [0.0, 0.0, 0.0]
+        centre = [(lows[j]+highs[j])/2 for j in range(3)]
         length = [2 * pad, 2 * pad, 2 * pad]
         centre[ai] = 0.5 * (a + b)
         length[ai] = (b - a)
@@ -104,6 +110,8 @@ def split_step(path: str, axis: str, cut_positions: List[float], out_dir: str,
                 .transformed(offset=(centre[0], centre[1], centre[2]))
                 .box(length[0], length[1], length[2]))
         part = solid.intersect(slab)
+        if not part.val().isValid() or not part.val().Solids() or part.val().Volume() <= 0:
+            raise ValueError(f"Part {i+1} is empty or invalid")
         part_path = os.path.join(out_dir, f"{prefix}_part{i+1:02d}.step")
         cq.exporters.export(part, part_path)
         pbb = part.val().BoundingBox()
@@ -113,6 +121,7 @@ def split_step(path: str, axis: str, cut_positions: List[float], out_dir: str,
             "bounds_min": [pbb.xmin, pbb.ymin, pbb.zmin],
             "bounds_max": [pbb.xmax, pbb.ymax, pbb.zmax],
             "span": [pbb.xlen, pbb.ylen, pbb.zlen],
+            "volume": part.val().Volume(), "valid": True, "solid_count": len(part.val().Solids()),
         })
     return reports
 
@@ -127,6 +136,8 @@ def split_stl(path: str, axis: str, cut_positions: List[float], out_dir: str,
     import trimesh
 
     mesh = trimesh.load(path, force="mesh")
+    if not mesh.is_volume:
+        raise ValueError("STL must enclose a consistently oriented watertight volume before splitting")
     ai = _AXIS_INDEX[axis]
     lo = float(mesh.bounds[0][ai])
     hi = float(mesh.bounds[1][ai])
@@ -148,6 +159,8 @@ def split_stl(path: str, axis: str, cut_positions: List[float], out_dir: str,
             reports.append({"part": os.path.basename(part_path), "path": part_path,
                             "empty": True})
             continue
+        if not part.is_volume:
+            raise ValueError(f"Part {i+1} is not a closed oriented volume")
         part.export(part_path)
         pb = part.bounds
         reports.append({
@@ -156,7 +169,7 @@ def split_stl(path: str, axis: str, cut_positions: List[float], out_dir: str,
             "bounds_min": [float(v) for v in pb[0]],
             "bounds_max": [float(v) for v in pb[1]],
             "span": [float(pb[1][k] - pb[0][k]) for k in range(3)],
-            "watertight": bool(part.is_watertight),
+            "watertight": bool(part.is_watertight), "volume": float(part.volume),
         })
     return reports
 
@@ -168,7 +181,11 @@ def split_stl(path: str, axis: str, cut_positions: List[float], out_dir: str,
 def split_file(path: str, *, axis: str = "z", max_span_mm: Optional[float] = None,
                cut_positions_mm: Optional[List[float]] = None,
                build_volume_mm: Optional[Tuple[float, float, float]] = None,
-               file_units: str = "m", out_dir: Optional[str] = None) -> dict:
+               file_units: str = "mm", out_dir: Optional[str] = None) -> dict:
+    if file_units not in ("m", "mm"): raise ValueError("file_units must be m or mm")
+    if build_volume_mm is not None and (len(build_volume_mm)!=3 or
+            any(not math.isfinite(v) or v<=0 for v in build_volume_mm)):
+        raise ValueError("Build volume must have three finite positive dimensions")
     axis = axis.lower().strip()
     if axis not in _AXIS_INDEX:
         raise ValueError(f"axis must be x, y or z (got {axis!r})")
@@ -177,13 +194,13 @@ def split_file(path: str, *, axis: str = "z", max_span_mm: Optional[float] = Non
 
     ext = os.path.splitext(path)[1].lower()
     stem = os.path.splitext(os.path.basename(path))[0]
-    out_dir = out_dir or (os.path.splitext(path)[0] + "_split")
+    out_dir = out_dir or (os.path.splitext(path)[0] + "_" + ext.lstrip(".") + "_split")
     os.makedirs(out_dir, exist_ok=True)
 
     # mm thresholds → file units
     to_file = 0.001 if file_units == "m" else 1.0
-    max_span = max_span_mm * to_file if max_span_mm else None
-    cut_positions = [c * to_file for c in cut_positions_mm] if cut_positions_mm else None
+    max_span = max_span_mm * to_file if max_span_mm is not None else None
+    cut_positions = [c * to_file for c in cut_positions_mm] if cut_positions_mm is not None else None
     build_volume = tuple(v * to_file for v in build_volume_mm) if build_volume_mm else None
 
     # Bounds on the cut axis
@@ -223,6 +240,9 @@ def split_file(path: str, *, axis: str = "z", max_span_mm: Optional[float] = Non
         "cut_positions": cuts,
         "build_volume": list(build_volume) if build_volume else None,
         "parts": parts,
+        "all_fit": all(p.get("fits_build_volume", True) for p in parts) if build_volume else None,
+        "fit_scope": "Axis permutations only; excludes supports, clearance and assembly joints",
+        "assembly": "Geometric cuts only; joining method must be designed separately",
     }
     report_path = os.path.join(out_dir, "split_report.json")
     with open(report_path, "w", encoding="utf-8") as f:
@@ -257,19 +277,21 @@ def main():
                    default=None, help="Explicit comma-separated cut positions (mm)")
     p.add_argument("--build-volume-mm", type=_parse_triple, default=None,
                    help="Printer build volume 'x,y,z' (mm) for fit checks")
-    p.add_argument("--file-units", default="m", choices=["m", "mm"],
-                   help="Numeric units in the input file (default: m for this repo)")
+    p.add_argument("--file-units", default="mm", choices=["m", "mm"],
+                   help="Numeric units in the input file (default: mm for fabrication; use m for simulation STL)")
     p.add_argument("--out-dir", default=None,
-                   help="Output directory (default: <input>_split)")
+                   help="Output directory (default: <stem>_<format>_split)")
     args = p.parse_args()
 
     if not args.max_span_mm and not args.cut_positions_mm:
         p.error("give --max-span-mm or --cut-positions-mm")
 
-    split_file(args.input, axis=args.axis, max_span_mm=args.max_span_mm,
+    report = split_file(args.input, axis=args.axis, max_span_mm=args.max_span_mm,
                cut_positions_mm=args.cut_positions_mm,
                build_volume_mm=args.build_volume_mm, file_units=args.file_units,
                out_dir=args.out_dir)
+    if report["all_fit"] is False:
+        raise SystemExit("One or more parts exceed the build volume; see split_report.json")
 
 
 if __name__ == "__main__":
