@@ -85,26 +85,29 @@ def geo_whole(params):
 
 # ── 1. Default behaviour is unchanged ───────────────────────────────────────
 
-def test_canonical_reproduces_legacy_curled_pose_exactly(geo, params):
+def test_canonical_preserves_legacy_curled_backbone_and_complete_units(geo, params):
     legacy = hf.generate_spiral_pose(geo.spiral.a_m, geo.spiral.b,
                                      Length=params["L"],
                                      delta_theta=geo.inputs.delta_theta_rad)
     got = geo.curled_quads()
     assert len(got) == len(legacy)
     for i, (g, l) in enumerate(zip(got, legacy)):
-        assert np.array_equal(g, l), f"curled quad {i} differs from Invert-era output"
+        slots = slice(0, 2) if i == len(got)-1 else slice(None)
+        assert np.array_equal(g[slots], l[slots]), f"curled backbone/complete quad {i} differs"
 
 
-def test_canonical_reproduces_legacy_straight_and_inverted_pose_exactly(geo, params):
+def test_canonical_preserves_legacy_straight_and_inverted_backbone(geo, params):
     legacy_raw = hf.generate_spiral_pose(geo.spiral.a_m, geo.spiral.b,
                                          Length=params["L"],
                                          delta_theta=geo.inputs.delta_theta_rad)
     legacy_straight = hf.straighten_pose(legacy_raw)
     legacy_inverted = hf.Invert_pose(legacy_straight, params["L"])
     for i, (g, l) in enumerate(zip(geo.straight_quads(), legacy_straight)):
-        assert np.array_equal(g, l), f"straight quad {i} differs"
+        slots = slice(0, 2) if i == geo.n_units-1 else slice(None)
+        assert np.array_equal(g[slots], l[slots]), f"straight backbone/complete quad {i} differs"
     for i, (g, l) in enumerate(zip(geo.inverted_quads(), legacy_inverted)):
-        assert np.array_equal(g, l), f"inverted quad {i} differs"
+        slots = slice(0, 2) if i == 0 else slice(None)
+        assert np.array_equal(g[slots], l[slots]), f"inverted backbone/complete quad {i} differs"
 
 
 def test_default_policy_is_exact_requested_length(params):

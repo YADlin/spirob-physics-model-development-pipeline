@@ -77,11 +77,15 @@ from spirob.geometry import SpiRobGeometry, from_params
 #  moves.
 #
 #  The pandas parse is nevertheless retained here because byte-identical
-#  historical STL output is a project requirement, and file ordering is part
+#  historical STL output for unchanged complete units is a project requirement,
+#  and file ordering is part
 #  of the bytes. The canonical model is used for structure, naming,
 #  conventions and validation instead. Switching the numeric source would be
 #  geometrically a no-op but would break byte comparisons against every STL
 #  the project has shipped. See tests/test_stl_generator_migration.py.
+#  The partial base surface was intentionally corrected on 2026-09-09; its
+#  changed CSV/STL and the flat mount's tiny OCC residuals are documented in
+#  docs/LINK_ORIENTATION_REPAIR.md.
 # ══════════════════════════════════════════════════════════════════════════════
 
 #: CSV column prefixes in canonical inverted-quad slot order.

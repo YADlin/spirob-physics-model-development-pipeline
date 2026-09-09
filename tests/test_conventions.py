@@ -193,11 +193,9 @@ def test_base_offset_equals_the_length_deficit(poses, params):
 def tendon_paths(params, tmp_path_factory):
     """Cable-0 path as (radius, height) tip->base, from both producers."""
     csv_path = tmp_path_factory.mktemp("geom") / "sites.csv"
-    b = b_of_phi(math.radians(params["phi_deg"]))
-    a = a_of(params["d_tip"], b)
-    dth = math.radians(params["Delta_theta_deg"])
-    raw = hf.generate_spiral_pose(a, b, Length=params["L"], delta_theta=dth)
-    inv = hf.Invert_pose(hf.straighten_pose(raw), params["L"])
+    from spirob.geometry import from_params
+    # Use the actual producer, including the corrected partial base surface.
+    inv = from_params(params).inverted_quads()
     hf.generate_cable_sites_csv_zrot_from_P(
         inv, n_cables=params["n_cables"], csv_path=str(csv_path))
 

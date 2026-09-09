@@ -77,7 +77,7 @@ class DesignApp:
                          ('Build simulation model',lambda:self.build(False)),
                          ('Build + export STEP/STL',lambda:self.build(True)),
                          ('Preview exported CAD',self.preview_cad),('Split fabrication file',self.split),
-                         ('Generate robot array',self.array),('Open MuJoCo viewer',self.viewer)]:
+                         ('Generate robot array',self.array),('Inspect link frames',self.viewer)]:
             self.add_button(controls,label,fn)
         ttk.Label(controls,text='CAD/STL export: millimetres\nSimulation meshes: metres\nFabrication dimensions require calibration.',wraplength=310).pack(anchor='w',pady=8)
         self.figure=Figure(figsize=(7,5),dpi=100)
@@ -191,7 +191,8 @@ class DesignApp:
                   '--count',self.count.get(),'--radius-m',self.radius.get()])
 
     def viewer(self):
-        self.run([sys.executable,'-m','mujoco.viewer','--mjcf='+str(Path(self.output.get()).resolve()/'spirob_physics_model.xml')])
+        self.run([sys.executable,str(ROOT/'tools'/'inspect_model.py'),'--view',
+                  '--mjcf',str(Path(self.output.get()).resolve()/'spirob_physics_model.xml')])
 
 
 def launch(params_path='params.json',output_dir='.'):

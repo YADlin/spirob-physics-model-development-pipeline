@@ -6,12 +6,13 @@ three or more cables use the existing n-lobe construction.
 
 ## Install
 
-Use a dedicated Python 3.12 environment (the tested version is 3.12.13):
+Use a dedicated Python 3.12 environment with uv (repairs tested on 3.12.13/14):
 
 ```bash
-python3.12 -m venv .venv
+uv python install 3.12
+uv venv --python 3.12 .venv
 source .venv/bin/activate
-python -m pip install -r requirements-fabrication.txt
+uv pip install -r requirements-fabrication.txt
 ```
 
 On Windows use `.venv\Scripts\activate` instead of `source`. The desktop GUI
@@ -50,9 +51,23 @@ python build.py --params examples/params-four-cable.json --no-preview --output-d
 ## Simulation and fabrication geometry
 
 The simulation generator retains its existing link/site/tendon/actuator names,
-routing, stiffness, damping and collision settings. In the tested two-cable
-case its CSV, all 21 STL meshes and XML are byte-identical to `main` at `55cc5f1`
-under the same dependency environment.
+routing convention, stiffness, damping and collision settings. The partial base
+now has a flat mounting face and the same joint-facing slope as complete links.
+Its surface, mass/inertia and cable attachment heights intentionally change.
+Its width, backbone endpoints and the complete links retain their geometry.
+See [base and frame repair](docs/LINK_ORIENTATION_REPAIR.md) for validation.
+
+To inspect link axes at a frozen pose:
+
+```bash
+python tools/inspect_model.py --mjcf build/two-cable/spirob_physics_model.xml --view
+```
+
+This viewer starts with **Body** frames. MuJoCo's **Geom** frames follow each
+mesh's computed principal inertia axes and can differ between links even when
+the actual geometry is aligned. The command also audits body axes and recovers
+the authored mesh frames; omit `--view` for a report without a desktop window.
+Use `python -m mujoco.viewer` above to run dynamics.
 
 The fabrication profile preserves the sloped segment faces and gaps. It adds a
 finite central flexure so the physical robot is one connected solid. The
@@ -141,7 +156,8 @@ exported CAD** shows the actual last exported mesh and supports mouse rotation.
 The canonical preview is explicitly labelled as simulation geometry.
 
 The GUI also offers file splitting, adjustable array count/radius, an output
-folder selector and the MuJoCo viewer. Work runs in one background job at a time;
+folder selector and **Inspect link frames**, which opens the frozen body-frame
+viewer. Work runs in one background job at a time;
 messages reach Tk through a main-thread queue. Invalid parameters stop the job.
 Desktop window execution remains unverified in the repair environment because
 it has no display server. Run the command above on the workstation as the GUI
@@ -168,6 +184,9 @@ shortening**, not an omitted terminal tip segment. Under `exact_requested_length
 the effective continuous length equals the requested length; the partial unit
 is the **base** link. Fabrication coordinates translate the base to z=0 without
 stretching the chain. See [canonical geometry](docs/CANONICAL_GEOMETRY.md).
+If a partial base is too short to retain its width and nominal joint-facing
+slope, generation fails with an explanation; choose `whole_units` or adjust the
+length/angular span. It does not silently create an inverted surface.
 
 The legacy stiffness/damping law remains `k_i=k_base/beta^(3*i)` and
 `d_i=d_base/beta^(3*i)`, with first-joint overrides. At beta=1.03, index 20 has
@@ -180,7 +199,7 @@ cross-section chosen by the cable count.
 ## Verification and provenance
 
 ```bash
-python -m pip install -r requirements-dev.txt
+uv pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 

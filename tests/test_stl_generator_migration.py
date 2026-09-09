@@ -398,7 +398,17 @@ def test_stl_output_matches_the_legacy_path(stl_mod, params, tmp_path, policy):
             got = f.read()
         with open(old_dir / name, "rb") as f:
             want = f.read()
-        assert got == want, f"{policy}/{name} differs from the pre-migration output"
+        if geo.units[0].is_partial and name == 'link_001.stl':
+            # The new flat mount produces nominally zero Z coordinates. OCC's
+            # two equivalent construction paths can leave different ~1e-19 m
+            # residuals there. Compare the complete tessellation at 1e-12 m,
+            # including triangle order/count; keep exact bytes for other links.
+            import numpy as np
+            assert _stl_triangle_count(new_dir/name) == _stl_triangle_count(old_dir/name)
+            np.testing.assert_allclose(_stl_vertices(new_dir/name), _stl_vertices(old_dir/name),
+                                       atol=ABS_M, rtol=0)
+        else:
+            assert got == want, f"{policy}/{name} differs from the pre-migration output"
 
 
 @requires_cad

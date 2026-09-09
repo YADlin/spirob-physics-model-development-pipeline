@@ -1,5 +1,10 @@
 # Consolidation repair — 8 September 2026
 
+**Follow-up:** [Link frames and partial base correction](LINK_ORIENTATION_REPAIR.md)
+documents the 9 September changes above `5d5b20a`. Byte-identity and CAD-volume
+results in this original report describe the preceding repair, not the newly
+corrected partial base.
+
 The recovered two-cable CAD had lost the segment gaps and declared metre-sized
 coordinates as millimetres. The repair restores the canonical segment outline,
 exports at physical size, and checks both solid and mesh topology. It also fixes
