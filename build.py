@@ -44,6 +44,8 @@ def main():
     p.add_argument('--output-dir',default='.',help='Destination for generated outputs')
     p.add_argument('--noclean',action='store_true',help='Compatibility flag; builds always use fresh staging')
     p.add_argument('--no-preview',action='store_true')
+    p.add_argument('--align-geom-frames',action='store_true',
+                   help='Also export spirob_aligned.mjb with actual Geom axes aligned to bodies (MuJoCo 3.3.5)')
     section = p.add_mutually_exclusive_group()
     section.add_argument('--plain',action='store_true')
     section.add_argument('--nlobe',action='store_true',help='Compatibility alias: use the n_cables cross-section')
@@ -88,6 +90,10 @@ def main():
         model=mujoco.MjModel.from_xml_path(str(stage/'spirob_physics_model.xml'))
         if model.ntendon != params['n_cables'] or model.nu != params['n_cables']:
             raise ValueError('Compiled MJCF cable/actuator count mismatch')
+        if a.align_geom_frames:
+            from spirob.mujoco_frames import aligned_geom_model
+            model = aligned_geom_model(model)
+            mujoco.mj_saveModel(model, str(stage/'spirob_aligned.mjb'), None)
         if a.cad:
             cad=[ROOT/'cad_export.py','--in',csv,'--params',params_path,'--profile',a.cad_profile,
                  '--neck-width-mm',a.neck_width_mm,'--cable-hole-diameter-mm',a.cable_hole_diameter_mm]
@@ -100,11 +106,15 @@ def main():
         backup=stage/'previous'; backup.mkdir()
         published=[]; moved=[]
         names=['Geom_Data_CSV','meshes','spirob_physics_model.xml']+(['cad'] if a.cad else [])
+        # Always retire a previous MJB when rebuilding: it must never describe
+        # an older robot than the XML/meshes in this output directory.
+        names.append('spirob_aligned.mjb')
         try:
             for name in names:
                 dest=output/name
                 if dest.exists(): dest.rename(backup/name); moved.append(name)
-                (stage/name).rename(dest); published.append(name)
+                if (stage/name).exists():
+                    (stage/name).rename(dest); published.append(name)
         except Exception:
             for name in reversed(published):
                 dest=output/name

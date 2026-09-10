@@ -13,6 +13,7 @@ meshes/
 cad/
 *_split/
 *.xml
+*.mjb
 
 # Editor settings
 .vscode/

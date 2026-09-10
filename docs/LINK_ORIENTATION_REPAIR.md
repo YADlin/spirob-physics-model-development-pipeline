@@ -1,5 +1,9 @@
 # Link frames and partial base — 9 September 2026
 
+The base correction below is retained. The frame-viewing workaround described
+here is historical: the [10 September Geom-frame update](GEOM_FRAME_ALIGNMENT.md)
+adds opt-in alignment of the actual compiled Geom frames.
+
 This follow-up stays on `fix/consolidation-cad-workflows`, above `5d5b20a`.
 The user pushed that commit successfully using SSH. This round addresses the
 reported link-frame inconsistency and the partial base's reversed-looking cut.

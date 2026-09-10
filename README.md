@@ -57,17 +57,36 @@ Its surface, mass/inertia and cable attachment heights intentionally change.
 Its width, backbone endpoints and the complete links retain their geometry.
 See [base and frame repair](docs/LINK_ORIENTATION_REPAIR.md) for validation.
 
-To inspect link axes at a frozen pose:
+To inspect **aligned Geom axes** at a frozen pose:
 
 ```bash
-python tools/inspect_model.py --mjcf build/two-cable/spirob_physics_model.xml --view
+python tools/inspect_model.py --mjcf build/two-cable/spirob_physics_model.xml --align-geom-frames --view
 ```
 
-This viewer starts with **Body** frames. MuJoCo's **Geom** frames follow each
-mesh's computed principal inertia axes and can differ between links even when
-the actual geometry is aligned. The command also audits body axes and recovers
-the authored mesh frames; omit `--view` for a report without a desktop window.
-Use `python -m mujoco.viewer` above to run dynamics.
+The viewer now starts with **Geom** frames. The opt-in alignment rebases actual
+compiled mesh coordinates while keeping their world surfaces and compiled body
+inertias. Without `--align-geom-frames`, the report and viewer show MuJoCo's
+original principal-axis frames. `--frames body` explicitly selects Body frames.
+The report checks actual Geom axes separately; its exit status is 1 if either
+the authored/body rest frames or the actual Geom axes fail alignment.
+
+**XML compilation always restores MuJoCo's principal-axis choice.** To retain
+aligned Geom axes in the standard viewer, export a compiled MJB:
+
+```bash
+python build.py --params examples/params-two-cable.json --no-preview --output-dir build/two-cable --align-geom-frames
+python tools/inspect_model.py --model build/two-cable/spirob_aligned.mjb --view
+# Run dynamics in the standard MuJoCo viewer (select Rendering > Frame > Geom):
+python -m mujoco.viewer --mjcf=build/two-cable/spirob_aligned.mjb
+```
+
+The optional MJB is for the pinned **MuJoCo 3.3.5**. Regenerate it after changing
+the robot; rebuilding without this option removes any older aligned MJB.
+Existing XML/STL generation and downstream naming are preserved. Consumers
+using geom-local axes must account for their changed convention; body/site
+conventions retain their existing meaning. See the
+[actual Geom-frame repair](docs/GEOM_FRAME_ALIGNMENT.md) for tests, limitations,
+and a Python loader example.
 
 The fabrication profile preserves the sloped segment faces and gaps. It adds a
 finite central flexure so the physical robot is one connected solid. The
@@ -156,8 +175,8 @@ exported CAD** shows the actual last exported mesh and supports mouse rotation.
 The canonical preview is explicitly labelled as simulation geometry.
 
 The GUI also offers file splitting, adjustable array count/radius, an output
-folder selector and **Inspect link frames**, which opens the frozen body-frame
-viewer. Work runs in one background job at a time;
+folder selector and **Inspect link frames**, which opens the frozen viewer with
+actual Geom axes aligned in memory. Work runs in one background job at a time;
 messages reach Tk through a main-thread queue. Invalid parameters stop the job.
 Desktop window execution remains unverified in the repair environment because
 it has no display server. Run the command above on the workstation as the GUI

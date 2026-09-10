@@ -192,6 +192,7 @@ class DesignApp:
 
     def viewer(self):
         self.run([sys.executable,str(ROOT/'tools'/'inspect_model.py'),'--view',
+                  '--align-geom-frames',
                   '--mjcf',str(Path(self.output.get()).resolve()/'spirob_physics_model.xml')])
 
 

@@ -1,9 +1,9 @@
 """Audit link frames; optionally inspect the model without advancing physics.
 
 MuJoCo recentres meshes and rotates them to their principal inertia axes. Its
-Geom frame display therefore need not align along a robot. Body frames describe
-the authored link/joint convention. Recover the authored mesh frame as well so
-an actual placement error cannot be dismissed as compiler recentering.
+Geom frame display therefore need not align along a robot. Report those actual
+axes separately from the authored mesh and body axes. Optionally align the
+compiled Geom frames, display them, and save the aligned model as MJB.
 """
 from __future__ import annotations
 
@@ -11,11 +11,14 @@ import argparse
 import json
 from pathlib import Path
 import re
+import sys
 import time
 
 import mujoco
 import numpy as np
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from spirob.mujoco_frames import aligned_geom_model
 
 def _rotation(quat):
     result = np.empty(9)
@@ -47,6 +50,8 @@ def frame_report(model, data):
                 'body_axes_max_error_vs_base': float(np.max(np.abs(body_rotation - reference))),
                 'authored_mesh_axes_max_error_vs_body': float(np.max(np.abs(authored_rotation - np.eye(3)))),
                 'authored_mesh_origin_error_m': float(np.linalg.norm(authored_position)),
+                'geom_axes_max_error_vs_body': float(np.max(np.abs(
+                    data.geom_xmat[geom_id].reshape(3, 3) - body_rotation))),
                 'compiled_geom_quat_wxyz': model.geom_quat[geom_id].tolist(),
             })
     if not rows:
@@ -54,16 +59,20 @@ def frame_report(model, data):
     aligned = all(row['body_axes_max_error_vs_base'] < 1e-9
                   and row['authored_mesh_axes_max_error_vs_body'] < 1e-9
                   and row['authored_mesh_origin_error_m'] < 1e-9 for row in rows)
-    return {'links_checked': len(rows), 'rest_frames_aligned': aligned, 'links': rows}
+    geom_aligned = all(row['geom_axes_max_error_vs_body'] < 1e-9 for row in rows)
+    return {'links_checked': len(rows), 'authored_rest_frames_aligned': aligned,
+            'geom_axes_aligned_with_bodies': geom_aligned,
+            'rest_frames_aligned': aligned and geom_aligned, 'links': rows}
 
 
-def inspect_view(model, data):
-    """Display body axes at a frozen pose; joint sliders still update the pose."""
+def inspect_view(model, data, frames='geom'):
+    """Display the selected real frames at a frozen pose; sliders update joints."""
     import mujoco.viewer
-    print('Inspection view: body frames, no time integration. Use joint sliders to inspect poses.')
+    print(f'Inspection view: {frames} frames, no time integration. Use joint sliders to inspect poses.')
     with mujoco.viewer.launch_passive(model, data) as viewer:
         with viewer.lock():
-            viewer.opt.frame = mujoco.mjtFrame.mjFRAME_BODY
+            viewer.opt.frame = (mujoco.mjtFrame.mjFRAME_GEOM if frames == 'geom'
+                                else mujoco.mjtFrame.mjFRAME_BODY)
         while viewer.is_running():
             mujoco.mj_forward(model, data)
             viewer.sync()
@@ -72,11 +81,23 @@ def inspect_view(model, data):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--mjcf', required=True, help='Generated SpiRob XML')
-    parser.add_argument('--view', action='store_true', help='Open the body-frame inspection viewer')
+    parser.add_argument('--mjcf', '--model', dest='model', required=True, help='Generated SpiRob XML or MJB')
+    parser.add_argument('--view', action='store_true', help='Open the frozen inspection viewer')
+    parser.add_argument('--frames', choices=['geom', 'body'], default='geom')
+    parser.add_argument('--align-geom-frames', action='store_true',
+                        help='Align actual compiled Geom axes with body axes, preserving mesh surfaces')
+    parser.add_argument('--save-mjb', type=Path, help='Save the inspected compiled model as .mjb')
     parser.add_argument('--json', action='store_true', help='Print the full per-link audit as JSON')
     args = parser.parse_args()
-    model = mujoco.MjModel.from_xml_path(str(Path(args.mjcf).resolve()))
+    path = Path(args.model).resolve()
+    if args.save_mjb and args.save_mjb.suffix.lower() != '.mjb':
+        parser.error('--save-mjb must end in .mjb (XML recompilation resets geom axes)')
+    if args.save_mjb and args.save_mjb.resolve() == path:
+        parser.error('--save-mjb must differ from the input path')
+    model = (mujoco.MjModel.from_binary_path(str(path)) if path.suffix.lower() == '.mjb'
+             else mujoco.MjModel.from_xml_path(str(path)))
+    if args.align_geom_frames:
+        model = aligned_geom_model(model)
     data = mujoco.MjData(model)
     mujoco.mj_forward(model, data)
     report = frame_report(model, data)
@@ -84,11 +105,17 @@ def main():
         print(json.dumps(report, indent=2))
     else:
         print(f"Links checked: {report['links_checked']}")
-        print(f"Rest frames aligned: {report['rest_frames_aligned']}")
-        if not report['rest_frames_aligned']:
-            print('Unexpected authored/body frame placement; rerun with --json for per-link details.')
+        print(f"Authored mesh/body rest frames aligned: {report['authored_rest_frames_aligned']}")
+        print(f"Actual Geom axes aligned with bodies: {report['geom_axes_aligned_with_bodies']}")
+        if not report['geom_axes_aligned_with_bodies']:
+            print('Use --align-geom-frames to align the compiled Geom axes; --json shows each link.')
+    if args.save_mjb:
+        args.save_mjb.parent.mkdir(parents=True, exist_ok=True)
+        mujoco.mj_saveModel(model, str(args.save_mjb.resolve()), None)
+        if not args.json:
+            print(f'Saved compiled model: {args.save_mjb.resolve()}')
     if args.view:
-        inspect_view(model, data)
+        inspect_view(model, data, args.frames)
     return 0 if report['rest_frames_aligned'] else 1
 
 
