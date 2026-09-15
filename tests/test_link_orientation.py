@@ -74,7 +74,7 @@ def built_model(request, tmp_path_factory):
     params_path = folder/'params.json'
     params_path.write_text(json.dumps(p))
     result = subprocess.run([sys.executable, str(ROOT/'build.py'), '--params', str(params_path),
-                             '--no-preview', '--output-dir', str(folder/'out')],
+                             '--no-preview', '--mesh-layout', 'individual', '--output-dir', str(folder/'out')],
                             capture_output=True, text=True, encoding='utf-8')
     assert result.returncode == 0, result.stdout + result.stderr
     model = mj.MjModel.from_xml_path(str(folder/'out'/'spirob_physics_model.xml'))

@@ -7,6 +7,9 @@ import argparse
 from dataclasses import dataclass
 from typing import Tuple
 import json
+import xml.etree.ElementTree as ET
+from spirob.mesh_assets import mesh_assets as source_mesh_assets
+from spirob.collision import rounded_flat_primitives
 
 # TENDON_INWARD_SHIFT and PHI_DEG are now passed explicitly via MJCFConfig
 # (read from params.json in build.py / the caller) so there is no top-level
@@ -42,6 +45,10 @@ class MJCFConfig:
     capsule_radius_scale: float = 0.25
     capsule_radius_min: float = 8e-4
     mesh_scale_attr: str = None
+    mesh_layout: str = "individual"
+    collision_corner_radius_ratio: float = 0.04
+    collision_margin_m: float = None
+    flat_thickness_ratio: float = 0.3
 
     # Post-generation overrides (populated from params.json "post_gen" block)
     post_gen: dict = None
@@ -173,10 +180,28 @@ def write_mjcf_from_sites_csv(
     out_xml_path: str = "spirob_mujoco.xml",
     mesh_dir: str = "meshes",
     digits: int = 3,
-    config: MJCFConfig = MJCFConfig()
+    config: MJCFConfig = MJCFConfig(),
+    geometry=None,
+    plain: bool = False,
 ) -> str:
     elements, n_cables = _parse_sites_csv(csv_path)
     if not elements: raise ValueError("CSV has no elements.")
+    if config.physics_mode not in ('mesh', 'capsule', 'compound'):
+        raise ValueError('Unknown collision mode: '+config.physics_mode)
+    margin = config.collision_margin_m
+    if margin is None:
+        margin = 0.0 if config.physics_mode == 'compound' else config.geom_margin
+    if not math.isfinite(margin) or margin < 0:
+        raise ValueError('collision margin must be nonnegative and finite')
+    if geometry is None and (config.mesh_layout == 'shared' or config.physics_mode == 'compound'):
+        raise ValueError('Shared meshes and compound collision require canonical geometry (--params)')
+    if config.physics_mode == 'compound' and (plain or n_cables != 2):
+        raise ValueError('Compound box/cylinder collision requires the two-cable flat section (without --plain)')
+    if geometry is not None:
+        # Prevent proxies and asset scales being built for a different CSV.
+        from csv2geom_nlobe import build_unit_inputs
+        import pandas as pd
+        build_unit_inputs(pd.read_csv(csv_path), geometry)
 
     # Use config values for tendon placement (no more module-level constants)
     TENDON_INWARD_SHIFT = config.tendon_inward_shift
@@ -239,17 +264,26 @@ def write_mjcf_from_sites_csv(
 
     # asset meshes
     mesh_assets = []
+    sources = source_mesh_assets(geometry, config.mesh_layout) if geometry is not None else None
     for i in range(len(frames)):
         mesh_name = f"link_{i+1:0{digits}d}"
-        mesh_file = os.path.join(mesh_dir, f"{mesh_name}.stl")
+        mesh_file = os.path.join(mesh_dir, sources[i].filename if sources else f"{mesh_name}.stl")
         if not os.path.exists(mesh_file):
-            print(f"[WARN] Mesh not found: {mesh_file} (model will still load, but mesh won't render)")
-        scale_attr = f' scale="{config.mesh_scale_attr}"' if config.mesh_scale_attr else ""
-        mesh_assets.append(f'    <mesh name="{mesh_name}" file="{mesh_file}"{scale_attr}/>')
+            raise FileNotFoundError(f'Mesh not found: {mesh_file}')
+        scale = np.array([float(v) for v in config.mesh_scale_attr.split()]) if config.mesh_scale_attr else np.ones(3)
+        if scale.shape != (3,) or not np.all(np.isfinite(scale)) or np.any(scale <= 0):
+            raise ValueError('mesh scale must contain three positive finite values')
+        if config.physics_mode == 'compound' and not np.all(scale == 1):
+            raise ValueError('Compound collision requires native metre-scale meshes; change geometry parameters to resize')
+        scale *= sources[i].scale if sources else 1.0
+        # Resolve the caller's mesh directory, then make paths relative to XML.
+        mesh_file = os.path.relpath(os.path.abspath(mesh_file), os.path.dirname(os.path.abspath(out_xml_path)))
+        mesh_assets.append(ET.tostring(ET.Element('mesh', name=mesh_name, file=mesh_file,
+                                                scale=' '.join(format(v, '.17g') for v in scale)), encoding='unicode'))
 
     # header & defaults
     header = f'''<mujoco model="SpiRob">
-  <compiler angle="radian" inertiafromgeom="true" autolimits="true"/>
+  <compiler angle="radian" inertiafromgeom="true" inertiagrouprange="1 1" autolimits="true"/>
   <option timestep="{config.timestep}" gravity="{config.gravity[0]} {config.gravity[1]} {config.gravity[2]}" integrator="{config.integrator}"/>
   <visual>
     <quality shadowsize="4096"/>
@@ -259,7 +293,7 @@ def write_mjcf_from_sites_csv(
 
   <!-- ===== DEFAULTS: edit these to tune global behavior ===== -->
   <default>
-    <geom density="{config.geom_density}" margin="{config.geom_margin}"
+    <geom density="{config.geom_density}" margin="{margin}"
           rgba="{config.geom_rgba[0]} {config.geom_rgba[1]} {config.geom_rgba[2]} {config.geom_rgba[3]}"
           friction="{config.friction[0]} {config.friction[1]} {config.friction[2]}"/>
     <site size="{config.site_size}"/>
@@ -337,23 +371,24 @@ def write_mjcf_from_sites_csv(
 
         # geoms
         geoms = []
+        contact = '0' if config.disable_contacts else '1'
+        collision_attrs = dict(mass='0', density='0', group='3', contype=contact, conaffinity=contact,
+                               rgba='0.95 0.45 0.08 0.45')
         if config.physics_mode == "capsule":
             # physics by capsule; mesh visual-only
             s0 = fr["sites_local"][0]["s1"]; s1 = fr["sites_local"][0]["s2"]
             r0 = float(np.linalg.norm(s0[:2])); r1 = float(np.linalg.norm(s1[:2]))
             cap_r = max(config.capsule_radius_min, config.capsule_radius_scale*max(r0, r1))
-            if config.disable_contacts:
-                geoms.append(f'<geom type="capsule" fromto="0 0 0  0 0 {L}" size="{cap_r}" contype="0" conaffinity="0"/>')
-            else:
-                geoms.append(f'<geom type="capsule" fromto="0 0 0  0 0 {L}" size="{cap_r}"/>')
-            # mesh visual-only
-            geoms.append(f'<geom type="mesh" mesh="{name}" contype="0" conaffinity="0" group="1"/>')
-        else:
-            # physics by mesh
-            if config.disable_contacts:
-                geoms.append(f'<geom type="mesh" mesh="{name}" contype="0" conaffinity="0" group="1"/>')
-            else:
-                geoms.append(f'<geom name="gmesh_{i+1:0{digits}d}" type="mesh" mesh="{name}" group="1"/>')
+            geoms.append(ET.tostring(ET.Element('geom', name=f'collision_{i+1:0{digits}d}_capsule',
+                         type='capsule', fromto=f'0 0 0 0 0 {L}', size=str(cap_r), **collision_attrs), encoding='unicode'))
+        elif config.physics_mode == 'compound':
+            for j, shape in enumerate(rounded_flat_primitives(geometry, i, config.flat_thickness_ratio,
+                                                             config.collision_corner_radius_ratio)):
+                geoms.append(ET.tostring(ET.Element('geom', name=f'collision_{i+1:0{digits}d}_{j:02d}',
+                                                     **shape, **collision_attrs), encoding='unicode'))
+        mesh_contact = contact if config.physics_mode == 'mesh' else '0'
+        geoms.append(f'<geom name="gmesh_{i+1:0{digits}d}" type="mesh" mesh="{name}" '
+                     f'contype="{mesh_contact}" conaffinity="{mesh_contact}" group="1"/>')
 
         # sites
         sites = []
@@ -421,13 +456,49 @@ def write_mjcf_from_sites_csv(
 
     os.makedirs(os.path.dirname(out_xml_path) or ".", exist_ok=True)
     with open(out_xml_path, "w") as f: f.write(xml)
+    freeze_mesh_inertias(out_xml_path)
     return out_xml_path
+
+
+def freeze_mesh_inertias(xml_path):
+    """Bake the mesh-derived body inertias into portable, editable MJCF.
+
+    The initial compiler pass includes only group 1 meshes. Proxies have zero
+    mass and belong to group 3. The delivered XML respects explicit inertias,
+    so adding or resizing contact geoms cannot change these body properties.
+    New task objects can still infer their own inertias from their geoms.
+    """
+    import mujoco
+    model = mujoco.MjModel.from_xml_path(os.path.abspath(xml_path))
+    tree = ET.parse(xml_path)
+    root = tree.getroot()
+    root.find('compiler').set('inertiafromgeom', 'auto')
+    root.find('compiler').attrib.pop('inertiagrouprange', None)
+    fmt = lambda values: ' '.join(format(float(v), '.17g') for v in values)
+    for body in root.findall('.//body'):
+        bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, body.get('name'))
+        inertial = ET.Element('inertial', mass=format(model.body_mass[bid], '.17g'),
+                              pos=fmt(model.body_ipos[bid]), quat=fmt(model.body_iquat[bid]),
+                              diaginertia=fmt(model.body_inertia[bid]))
+        body.insert(0, inertial)
+    root.insert(0, ET.Comment(' Body inertias are derived from CAD meshes at generation time. '
+                              'Collision geoms have zero mass. Regenerate after changing geometry or density. '))
+    ET.indent(tree, space='  ')
+    tree.write(xml_path, encoding='unicode')
+    mujoco.MjModel.from_xml_path(os.path.abspath(xml_path))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert Spirob CSV to MJCF XML")
     parser.add_argument("--in", dest="input", required=True, help="Input CSV file")
     parser.add_argument("--out", dest="output", default="spirob_physics_model.xml", help="Output XML file")
     parser.add_argument("--meshdir", default="meshes", help="Directory containing STL meshes")
+    parser.add_argument('--mesh-layout', choices=['shared', 'individual'], default=None)
+    parser.add_argument('--collision-mode', choices=['mesh', 'capsule', 'compound'])
+    parser.add_argument('--collision-corner-radius-ratio', type=float, default=0.04,
+                        help='Compound corner radius / link half-width (default: 0.04)')
+    parser.add_argument('--collision-margin-m', type=float,
+                        help='Contact margin in metres; default 0 for compound, otherwise the selected preset')
+    parser.add_argument('--plain', action='store_true')
     parser.add_argument("--safe", action="store_true", help="Enable safe preset mode")
     parser.add_argument("--fast", action="store_true", help="Enable fast preset mode")
     parser.add_argument("--high", action="store_true", help="Enable high-fidelity preset mode")
@@ -455,20 +526,31 @@ if __name__ == "__main__":
     # Apply user-supplied params (override dataclass defaults)
     config.tendon_inward_shift = args.tendon_shift
     config.phi_deg             = args.phi_deg
+    config.mesh_layout = args.mesh_layout or ('shared' if os.path.exists(os.path.join(args.meshdir, 'link_template.stl')) else 'individual')
+    config.collision_corner_radius_ratio = args.collision_corner_radius_ratio
+    config.collision_margin_m = args.collision_margin_m
+    if args.collision_mode:
+        config.physics_mode = args.collision_mode
     if args.hinge:
         config.joint_type = "hinge"
 
     # Load post_gen block from params.json if --params was supplied
+    geometry = None
     if args.params:
         with open(args.params) as f:
             raw = json.load(f)
         config.post_gen = raw.get("post_gen", {})
+        config.flat_thickness_ratio = float(raw.get('flat_thickness_ratio', 0.3))
+        from spirob.geometry import from_params
+        geometry = from_params(raw)
 
     out_xml = write_mjcf_from_sites_csv(
         csv_path=args.input,
         out_xml_path=args.output,
         mesh_dir=args.meshdir,
         digits=args.digits,
-        config=config
+        config=config,
+        geometry=geometry,
+        plain=args.plain,
     )
     print(f"Wrote {out_xml}")

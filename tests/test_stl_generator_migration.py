@@ -458,7 +458,7 @@ def test_cli_still_accepts_the_documented_flags(params, csv_path, tmp_path):
         env=child_env)
     assert proc.returncode == 0, proc.stderr
     assert "terminal_unit_policy = exact_requested_length" in proc.stdout
-    assert len(os.listdir(str(tmp_path / "cli"))) == 21
+    assert set(os.listdir(str(tmp_path / "cli"))) == {'link_001.stl', 'link_template.stl'}
 
 
 def test_build_py_preserves_stl_arguments_as_separate_tokens(tmp_path, monkeypatch):

@@ -1,6 +1,6 @@
 # SpiRob Physics Model Pipeline
 
-Generate canonical spiral geometry, per-link simulation meshes, MuJoCo MJCF,
+Generate canonical spiral geometry, shared simulation meshes, MuJoCo MJCF,
 and whole-robot STEP/STL fabrication models. Two cables use a flat section;
 three or more cables use the existing n-lobe construction.
 
@@ -32,7 +32,8 @@ Output:
 | File | Meaning | Units |
 |---|---|---|
 | `Geom_Data_CSV/Spirob_geom_data.csv` | Canonical link geometry | m |
-| `meshes/link_001.stl` … | Individual simulation meshes, local link frames | m |
+| `meshes/link_template.stl` | Shared complete-link mesh; MJCF scales it per link | m |
+| `meshes/link_001.stl` | Separate partial-base mesh, when present | m |
 | `spirob_physics_model.xml` | Compiled and checked MuJoCo model | m |
 | `cad/spirob.step` | Full CAD solid, base at z=0, +Z toward tip | mm |
 | `cad/spirob.stl` | Full fabrication mesh; import into slicer as mm | mm |
@@ -47,6 +48,47 @@ subprocesses use the interpreter that launched the build.
 python -m mujoco.viewer --mjcf=build/two-cable/spirob_physics_model.xml
 python build.py --params examples/params-four-cable.json --no-preview --output-dir build/four-cable --cad
 ```
+
+## Collision shapes and body inertia
+
+Every generated link has an explicit `<inertial>` element derived from its mesh.
+Collision proxies have zero mass. The final compiler uses `inertiafromgeom="auto"`,
+which respects those explicit inertias while allowing new task objects to infer
+their own. Regenerate after changing geometry or material density; changing a
+collider alone does not change a link's mass, centre of mass or inertia tensor.
+
+For the **two-cable flat section**, use boxes along the sloping faces and cylinders
+at the corners:
+
+```bash
+python build.py --params examples/params-two-cable.json --no-preview --collision-mode compound --output-dir build/two-cable
+python tools/inspect_collision.py --mjcf build/two-cable/spirob_physics_model.xml --view
+```
+
+The inspection view shows translucent blue CAD and orange collision primitives
+at a frozen pose. Toggle geom groups 1 and 3 to compare. The standard MuJoCo
+viewer also opens this XML directly; group 3 is hidden by default.
+
+`--collision-mode capsule` retains the capsule approximation with corrected
+inertia handling; `--collision-mode mesh` remains the default. Capsule/mesh modes
+and shared STLs support other cable counts. Compound mode currently requires
+two cables without `--plain`. `--safe` still chooses capsules unless explicitly
+overridden by `--collision-mode`.
+
+`--collision-corner-radius-ratio` defaults to `0.04` of each link's half-width.
+Smaller values fit sharp corners more closely but need more boxes. Rounding is
+inward and does not change CAD. Compound mode defaults to zero contact margin;
+use `--collision-margin-m` to set a deliberate contact buffer. Other modes retain
+their preset margins unless this flag is supplied.
+
+The default `--mesh-layout shared` needs only a complete-link STL and, when
+present, a partial-base STL. Separate named MJCF assets apply each link's scale.
+Use `--mesh-layout individual` for consumers that directly open every
+`link_NNN.stl`. Link/body/site/tendon/actuator names remain unchanged. Copy the
+XML **and its meshes folder** when moving a generated robot.
+
+See [collision and shared-mesh validation](docs/COLLISION_AND_SHARED_MESHES.md)
+for the measured fit, contact checks and limitations.
 
 ## Simulation and fabrication geometry
 

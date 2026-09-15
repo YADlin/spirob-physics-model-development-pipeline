@@ -36,6 +36,7 @@ import cadquery as cq
 import pandas as pd
 
 from spirob.geometry import SpiRobGeometry, from_params
+from spirob.mesh_assets import mesh_assets
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -382,7 +383,7 @@ def process_csv(csv_file, outdir="meshes", revolve_axis="y", angle=360,
                 nlobe_t=0.5, notch_factor=0.25,
                 flat_thickness_ratio=0.3, plain=False,
                 geometry: Optional[SpiRobGeometry] = None,
-                params: Optional[dict] = None):
+                params: Optional[dict] = None, mesh_layout="individual"):
     """
     CSV → STL meshes.
 
@@ -480,7 +481,13 @@ def process_csv(csv_file, outdir="meshes", revolve_axis="y", angle=360,
             for _, row in df.iterrows()
         ]
 
-    for unit in units:
+    if mesh_layout == 'shared' and geometry is None:
+        raise ValueError('Shared meshes require canonical geometry or params')
+    assets = mesh_assets(geometry, mesh_layout) if geometry is not None else None
+    sources = ({a.source_index: a.filename for a in assets} if assets is not None
+               else {i: u.link_name + '.stl' for i, u in enumerate(units)})
+    for index, filename in sources.items():
+        unit = units[index]
         element_id = unit.element_id
         try:
             if flat_mode:
@@ -508,7 +515,7 @@ def process_csv(csv_file, outdir="meshes", revolve_axis="y", angle=360,
                         notch_factor=notch_factor,
                     )
 
-            output_path = os.path.join(outdir, f"{unit.link_name}.stl")
+            output_path = os.path.join(outdir, filename)
             cq.exporters.export(solid, output_path, tolerance=1e-4)
             print(f"  ✓ {output_path}")
 
@@ -539,6 +546,8 @@ if __name__ == "__main__":
                         help="Path to params.json (default: params.json)")
     parser.add_argument("--plain",  action="store_true",
                         help="Plain revolve — skip n-lobe cut (full solid of revolution)")
+    parser.add_argument('--mesh-layout', choices=['shared', 'individual'], default='shared',
+                        help='Share one complete-link STL; partial base remains separate')
     args = parser.parse_args()
 
     with open(args.params, encoding="utf-8") as f:
@@ -557,4 +566,5 @@ if __name__ == "__main__":
         flat_thickness_ratio = float(params.get("flat_thickness_ratio", 0.3)),
         plain                = args.plain,
         geometry             = from_params(params),
+        mesh_layout          = args.mesh_layout,
     )

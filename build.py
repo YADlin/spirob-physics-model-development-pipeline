@@ -23,9 +23,10 @@ def run_step(argv, desc, cwd):
     subprocess.run([sys.executable, *map(str, argv)], cwd=cwd, env=env, check=True)
 
 
-def verify_meshes(directory, geometry):
+def verify_meshes(directory, geometry, layout='individual'):
     import struct
-    expected = {u.link_name+'.stl' for u in geometry.units}
+    from spirob.mesh_assets import mesh_assets
+    expected = {asset.filename for asset in mesh_assets(geometry, layout)}
     actual = {p.name for p in Path(directory).glob('*.stl')}
     if actual != expected:
         raise ValueError(f'Incomplete mesh set: missing={sorted(expected-actual)}, unexpected={sorted(actual-expected)}')
@@ -44,6 +45,14 @@ def main():
     p.add_argument('--output-dir',default='.',help='Destination for generated outputs')
     p.add_argument('--noclean',action='store_true',help='Compatibility flag; builds always use fresh staging')
     p.add_argument('--no-preview',action='store_true')
+    p.add_argument('--mesh-layout',choices=['shared','individual'],default='shared',
+                   help='Reuse one complete-link STL plus a partial-base STL (default: shared)')
+    p.add_argument('--collision-mode',choices=['mesh','capsule','compound'],
+                   help='Contact shape; compound uses boxes/cylinders for the two-cable flat section')
+    p.add_argument('--collision-corner-radius-ratio',type=float,default=0.04,
+                   help='Compound corner radius / link half-width (default: 0.04)')
+    p.add_argument('--collision-margin-m',type=float,
+                   help='Contact margin in metres; default 0 for compound, otherwise the selected preset')
     p.add_argument('--align-geom-frames',action='store_true',
                    help='Also export spirob_aligned.mjb with actual Geom axes aligned to bodies (MuJoCo 3.3.5)')
     section = p.add_mutually_exclusive_group()
@@ -65,6 +74,8 @@ def main():
     from spirob.geometry import from_params
     validate_params(params)
     geometry = from_params(params)
+    if a.collision_mode == 'compound' and (a.plain or params['n_cables'] != 2):
+        p.error('--collision-mode compound requires n_cables=2 without --plain')
     if not a.no_preview:
         preview=[ROOT/'preview.py','--params',params_path]
         if not a.plain and params['n_cables']>=3: preview.append('--nlobe')
@@ -75,13 +86,17 @@ def main():
         stage=Path(td)
         run_step([ROOT/'spirob_csv_generator.py','--params',params_path,'--yes'],'Generate CSV',stage)
         csv=Path('Geom_Data_CSV/Spirob_geom_data.csv')
-        mesh=[ROOT/'csv2geom_nlobe.py','--in',csv,'--params',params_path]
+        mesh=[ROOT/'csv2geom_nlobe.py','--in',csv,'--params',params_path,'--mesh-layout',a.mesh_layout]
         if a.plain: mesh.append('--plain')
         run_step(mesh,'Generate simulation meshes',stage)
-        verify_meshes(stage/'meshes',geometry)
+        verify_meshes(stage/'meshes',geometry,a.mesh_layout)
         xml=[ROOT/'csv2xml.py','--in',csv,'--out','spirob_physics_model.xml',
              '--params',params_path,'--tendon-shift',params['tendon_inward_shift'],
-             '--phi-deg',params['phi_deg']]
+             '--phi-deg',params['phi_deg'],'--mesh-layout',a.mesh_layout,
+             '--collision-corner-radius-ratio',a.collision_corner_radius_ratio]
+        if a.collision_mode: xml.extend(['--collision-mode',a.collision_mode])
+        if a.collision_margin_m is not None: xml.extend(['--collision-margin-m',a.collision_margin_m])
+        if a.plain: xml.append('--plain')
         if params['n_cables']==2 and not a.plain: xml.append('--hinge')
         for name in ('safe','fast','high'):
             if getattr(a,name): xml.append('--'+name)
