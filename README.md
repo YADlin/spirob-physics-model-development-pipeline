@@ -90,6 +90,15 @@ XML **and its meshes folder** when moving a generated robot.
 See [collision and shared-mesh validation](docs/COLLISION_AND_SHARED_MESHES.md)
 for the measured fit, contact checks and limitations.
 
+Compound builds now allocate 128 MiB of native MuJoCo arena memory to accommodate
+large contact sets. `--arena-memory-mib` overrides it. This addresses allocation
+capacity; extreme actuation can still become numerically unstable.
+
+The new [dynamics tools](docs/DYNAMICS_TOOLS.md) compare full inertia tensors
+against mesh/CAD references and edit the exponential joint gains while preserving
+the protected base. `tools/inspect_collision.py --stress` runs a bounded actuator
+test and reports contacts, arena usage and the first warning.
+
 ## Simulation and fabrication geometry
 
 The simulation generator retains its existing link/site/tendon/actuator names,

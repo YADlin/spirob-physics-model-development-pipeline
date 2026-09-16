@@ -53,6 +53,8 @@ def main():
                    help='Compound corner radius / link half-width (default: 0.04)')
     p.add_argument('--collision-margin-m',type=float,
                    help='Contact margin in metres; default 0 for compound, otherwise the selected preset')
+    p.add_argument('--arena-memory-mib',type=int,
+                   help='Native MuJoCo arena MiB; default 128 for compound, otherwise compiler default')
     p.add_argument('--align-geom-frames',action='store_true',
                    help='Also export spirob_aligned.mjb with actual Geom axes aligned to bodies (MuJoCo 3.3.5)')
     section = p.add_mutually_exclusive_group()
@@ -96,6 +98,7 @@ def main():
              '--collision-corner-radius-ratio',a.collision_corner_radius_ratio]
         if a.collision_mode: xml.extend(['--collision-mode',a.collision_mode])
         if a.collision_margin_m is not None: xml.extend(['--collision-margin-m',a.collision_margin_m])
+        if a.arena_memory_mib is not None: xml.extend(['--arena-memory-mib',a.arena_memory_mib])
         if a.plain: xml.append('--plain')
         if params['n_cables']==2 and not a.plain: xml.append('--hinge')
         for name in ('safe','fast','high'):

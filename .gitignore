@@ -35,3 +35,4 @@ main.py
 
 # Test cache
 .pytest_cache/
+MUJOCO_LOG.TXT

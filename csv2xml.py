@@ -49,6 +49,7 @@ class MJCFConfig:
     collision_corner_radius_ratio: float = 0.04
     collision_margin_m: float = None
     flat_thickness_ratio: float = 0.3
+    arena_memory_mib: int = None
 
     # Post-generation overrides (populated from params.json "post_gen" block)
     post_gen: dict = None
@@ -193,6 +194,12 @@ def write_mjcf_from_sites_csv(
         margin = 0.0 if config.physics_mode == 'compound' else config.geom_margin
     if not math.isfinite(margin) or margin < 0:
         raise ValueError('collision margin must be nonnegative and finite')
+    arena = config.arena_memory_mib
+    if arena is None and config.physics_mode == 'compound':
+        arena = 128
+    if arena is not None and (isinstance(arena, bool) or not isinstance(arena, int) or not 1 <= arena <= 4096):
+        raise ValueError('arena memory must be an integer from 1 to 4096 MiB')
+    size_xml = f'  <size memory="{arena}M"/>\n' if arena is not None else ''
     if geometry is None and (config.mesh_layout == 'shared' or config.physics_mode == 'compound'):
         raise ValueError('Shared meshes and compound collision require canonical geometry (--params)')
     if config.physics_mode == 'compound' and (plain or n_cables != 2):
@@ -284,7 +291,7 @@ def write_mjcf_from_sites_csv(
     # header & defaults
     header = f'''<mujoco model="SpiRob">
   <compiler angle="radian" inertiafromgeom="true" inertiagrouprange="1 1" autolimits="true"/>
-  <option timestep="{config.timestep}" gravity="{config.gravity[0]} {config.gravity[1]} {config.gravity[2]}" integrator="{config.integrator}"/>
+{size_xml}  <option timestep="{config.timestep}" gravity="{config.gravity[0]} {config.gravity[1]} {config.gravity[2]}" integrator="{config.integrator}"/>
   <visual>
     <quality shadowsize="4096"/>
     <map znear="0.01" zfar="20"/>
@@ -498,6 +505,8 @@ if __name__ == "__main__":
                         help='Compound corner radius / link half-width (default: 0.04)')
     parser.add_argument('--collision-margin-m', type=float,
                         help='Contact margin in metres; default 0 for compound, otherwise the selected preset')
+    parser.add_argument('--arena-memory-mib', type=int,
+                        help='Native MuJoCo arena MiB; default 128 for compound, otherwise compiler default')
     parser.add_argument('--plain', action='store_true')
     parser.add_argument("--safe", action="store_true", help="Enable safe preset mode")
     parser.add_argument("--fast", action="store_true", help="Enable fast preset mode")
@@ -529,6 +538,7 @@ if __name__ == "__main__":
     config.mesh_layout = args.mesh_layout or ('shared' if os.path.exists(os.path.join(args.meshdir, 'link_template.stl')) else 'individual')
     config.collision_corner_radius_ratio = args.collision_corner_radius_ratio
     config.collision_margin_m = args.collision_margin_m
+    config.arena_memory_mib = args.arena_memory_mib
     if args.collision_mode:
         config.physics_mode = args.collision_mode
     if args.hinge:
