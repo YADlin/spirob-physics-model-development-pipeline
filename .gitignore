@@ -25,6 +25,7 @@ venv/
 # Phase 2: build manifests and audit output
 build/
 build_manifest.json
+/build_params.json
 
 # Phase 2: local environment / tooling files that are not part of the project.
 # Listed explicitly so they cannot be committed by accident.

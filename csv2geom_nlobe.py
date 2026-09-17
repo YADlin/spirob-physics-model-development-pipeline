@@ -221,7 +221,7 @@ def revolve_profile(profile, angle=360, axis="y"):
 #  Flat tapered extrusion  (n_cables = 1 or 2)
 # ══════════════════════════════════════════════════════════════════════════════
 
-def build_flat_element(row, thickness_ratio=0.3):
+def build_flat_element(row, thickness_ratio=0.3, hex_edge_ratio=None):
     """
     Build the flat element by extruding the actual trapezoidal quad profile
     in ±Y (perpendicular to the XZ plane the profile lives in).
@@ -234,9 +234,19 @@ def build_flat_element(row, thickness_ratio=0.3):
     the original left half (x<=0) plus its mirror (x>=0) form a diamond/
     arrowhead shape when viewed from above, matching the physical element.
 
-    Thickness = |c0_s1_x| * thickness_ratio, scales with element size.
+    Centre thickness = 2 * |c0_s2_x| * thickness_ratio, scaling with link
+    size. The legacy both=True call extrudes R*ratio in each Y direction.
+    With hex_edge_ratio, the XY section has two centre ridges and flat sides.
     All coordinates shifted so joint_s1 is at z=0.
     """
+    if hex_edge_ratio is not None:
+        from spirob.sections import lens_solid_mm
+        if not math.isfinite(hex_edge_ratio) or not 0 < hex_edge_ratio < 1:
+            raise ValueError('hex_edge_ratio must be strictly between 0 and 1')
+        origin_z = float(row['joint_s1_z'])
+        points = [(x, y, z-origin_z) for x, y, z in extract_points(row)]
+        thickness_mm = 2*abs(float(row['c0_s2_x']))*thickness_ratio*1000
+        return cq.Workplane(obj=lens_solid_mm(points, thickness_mm, hex_edge_ratio).scale(.001))
     # Four corners of the quad in XZ
     A1x = float(row["joint_s1_x"]);  A1z = float(row["joint_s1_z"])
     A0x = float(row["joint_s2_x"]);  A0z = float(row["joint_s2_z"])
@@ -433,10 +443,16 @@ def process_csv(csv_file, outdir="meshes", revolve_axis="y", angle=360,
             "explicit `n_cables` and `phi_deg`. There is deliberately no "
             "default for phi_deg; see audit finding F-11.")
 
+    from spirob.sections import resolve_section_params
+    section_params = resolve_section_params(params or {'n_cables': n_cables}, plain=plain)
+    hex_edge = section_params.get('hex_edge_ratio') if section_params.get('flat_section') == 'hex' else None
+    if hex_edge is not None:
+        flat_thickness_ratio = section_params.get('flat_thickness_ratio', flat_thickness_ratio)
     draft_angle_deg = phi_deg / 2.0
     flat_mode       = (not plain) and (n_cables <= 2)
 
     print("Mesh generation settings:")
+    if hex_edge is not None: print(f"  XY section           = six-sided; edge / centre thickness = {hex_edge}")
     if plain:
         print(f"  mode                 = plain revolve (no cut)")
     elif flat_mode:
@@ -492,7 +508,7 @@ def process_csv(csv_file, outdir="meshes", revolve_axis="y", angle=360,
         try:
             if flat_mode:
                 # ── Flat extrusion of actual trapezoidal quad profile ─────
-                solid = build_flat_element(unit.row, flat_thickness_ratio)
+                solid = build_flat_element(unit.row, flat_thickness_ratio, hex_edge_ratio=hex_edge)
 
             else:
                 # ── Revolved cylinder (+ optional n-lobe cut) ─────────────
@@ -548,10 +564,13 @@ if __name__ == "__main__":
                         help="Plain revolve — skip n-lobe cut (full solid of revolution)")
     parser.add_argument('--mesh-layout', choices=['shared', 'individual'], default='shared',
                         help='Share one complete-link STL; partial base remains separate')
+    from spirob.sections import section_arguments, resolve_section_params
+    section_arguments(parser)
     args = parser.parse_args()
 
     with open(args.params, encoding="utf-8") as f:
-        params = json.load(f)
+        params = resolve_section_params(json.load(f), hex_section=args.hex_section,
+                                        hex_edge_ratio=args.hex_edge_ratio, plain=args.plain)
 
     # n_cables and phi_deg are deliberately NOT passed: they come from the
     # canonical model, so the CLI exercises the same path every other caller
@@ -566,5 +585,6 @@ if __name__ == "__main__":
         flat_thickness_ratio = float(params.get("flat_thickness_ratio", 0.3)),
         plain                = args.plain,
         geometry             = from_params(params),
+        params               = params,
         mesh_layout          = args.mesh_layout,
     )

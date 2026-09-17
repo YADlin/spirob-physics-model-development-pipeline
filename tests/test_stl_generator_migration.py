@@ -467,17 +467,25 @@ def test_build_py_preserves_stl_arguments_as_separate_tokens(tmp_path, monkeypat
     pfile = tmp_path / "my params.json"
     pfile.write_text(_read_text(os.path.join(_ROOT, "params.json")), encoding="utf-8")
     seen = []
+    staged_params = {}
     def capture(argv, desc, cwd):
         if str(argv[0]).endswith("csv2geom_nlobe.py"):
             seen.extend(map(str, argv))
+            # The driver now writes resolved CLI overrides to a staged copy.
+            # Verify that the copy preserves the input values and is passed
+            # as one token even when its containing directory has spaces.
+            with open(seen[seen.index("--params") + 1], encoding="utf-8") as stream:
+                staged_params.update(json.load(stream))
             raise RuntimeError("captured STL command")
     monkeypatch.setattr(build, "run_step", capture)
     monkeypatch.setattr(sys, "argv", ["build.py", "--params", str(pfile),
-                                    "--no-preview", "--output-dir", str(tmp_path / "outputs")])
+                                    "--no-preview", "--output-dir", str(tmp_path / "my outputs" / "outputs")])
+    (tmp_path / "my outputs").mkdir()
     with pytest.raises(RuntimeError, match="captured STL command"):
         build.main()
     assert seen[seen.index("--in") + 1] == "Geom_Data_CSV/Spirob_geom_data.csv"
-    assert seen[seen.index("--params") + 1] == str(pfile)
+    assert "my outputs" in seen[seen.index("--params") + 1]
+    assert staged_params == json.loads(pfile.read_text(encoding="utf-8"))
 
 
 def test_f08_tendon_rule_untouched():

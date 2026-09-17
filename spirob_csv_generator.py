@@ -133,11 +133,20 @@ def validate_params(p: dict):
         if not isinstance(flat_t, (int, float)) or not (0.05 <= flat_t <= 1.0):
             errors.append(f"  • 'flat_thickness_ratio' must be in [0.05, 1.0]  (got {flat_t})")
 
+    from spirob.sections import resolve_section_params
+    try:
+        resolve_section_params(p)
+    except ValueError as exc:
+        errors.append(f'  • {exc}')
+
     # ── post_gen block ─────────────────────────────────────────────────────────
     post = p.get("post_gen", {})
     if not isinstance(post, dict):
         errors.append("  • 'post_gen' must be a JSON object  (got non-object)")
     else:
+        timestep = post.get('timestep')
+        if timestep is not None and (isinstance(timestep, bool) or not isinstance(timestep, (int, float)) or not math.isfinite(timestep) or timestep <= 0):
+            errors.append('  • post_gen.timestep must be finite and positive')
         def _check_pos(key, lo=0, inclusive=True):
             v = post.get(key)
             if v is None:

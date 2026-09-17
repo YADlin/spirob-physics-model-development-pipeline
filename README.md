@@ -35,6 +35,7 @@ Output:
 | `meshes/link_template.stl` | Shared complete-link mesh; MJCF scales it per link | m |
 | `meshes/link_001.stl` | Separate partial-base mesh, when present | m |
 | `spirob_physics_model.xml` | Compiled and checked MuJoCo model | m |
+| `build_params.json` | Geometry parameters with CLI section/timestep overrides | Same as input params |
 | `cad/spirob.step` | Full CAD solid, base at z=0, +Z toward tip | mm |
 | `cad/spirob.stl` | Full fabrication mesh; import into slicer as mm | mm |
 | `cad/spirob_cad_report.json` | Dimensions, topology checks, parameters and hashes | Explicit per field |
@@ -48,6 +49,24 @@ subprocesses use the interpreter that launched the build.
 python -m mujoco.viewer --mjcf=build/two-cable/spirob_physics_model.xml
 python build.py --params examples/params-four-cable.json --no-preview --output-dir build/four-cable --cad
 ```
+
+## Optional six-sided two-cable section
+
+```bash
+uv run python build.py --params examples/params-two-cable.json --hex-section --hex-edge-ratio 0.75 --timestep 0.0001 --collision-mode mesh --collision-margin-m 0 --no-preview --cad --cad-profile simulation --output-dir build/hex-review
+uv run python tools/inspect_section.py --mjcf build/hex-review/spirob_physics_model.xml --out build/hex-review/cross_sections.png
+```
+
+`--hex-section` gives the **XY end-on view** six sides: two centre ridges and
+short flat outer side walls. `--hex-edge-ratio` controls edge/centre thickness;
+`flat_thickness_ratio` in params controls centre thickness/width. The centre
+thickness and link dimensions retain your parameter values. Omitting the flag
+and the `flat_section` parameter keeps the existing rectangular simulation
+section. The equivalent saved configuration is `examples/params-two-cable-hex.json`.
+
+The new [section guide](docs/HEX_SECTION.md) covers inspection, inertia auditing,
+and fabrication export. Compound colliders currently fit the rectangular
+section and are rejected with the hex option until their geometry is updated.
 
 ## Collision shapes and body inertia
 
@@ -72,7 +91,7 @@ viewer also opens this XML directly; group 3 is hidden by default.
 `--collision-mode capsule` retains the capsule approximation with corrected
 inertia handling; `--collision-mode mesh` remains the default. Capsule/mesh modes
 and shared STLs support other cable counts. Compound mode currently requires
-two cables without `--plain`. `--safe` still chooses capsules unless explicitly
+two cables with the rectangular section, without `--plain`. `--safe` still chooses capsules unless explicitly
 overridden by `--collision-mode`.
 
 `--collision-corner-radius-ratio` defaults to `0.04` of each link's half-width.

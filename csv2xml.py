@@ -48,6 +48,7 @@ class MJCFConfig:
     mesh_layout: str = "individual"
     collision_corner_radius_ratio: float = 0.04
     collision_margin_m: float = None
+    flat_section: str = 'rectangular'
     flat_thickness_ratio: float = 0.3
     arena_memory_mib: int = None
 
@@ -189,6 +190,14 @@ def write_mjcf_from_sites_csv(
     if not elements: raise ValueError("CSV has no elements.")
     if config.physics_mode not in ('mesh', 'capsule', 'compound'):
         raise ValueError('Unknown collision mode: '+config.physics_mode)
+    if not math.isfinite(config.timestep) or config.timestep <= 0:
+        raise ValueError('timestep must be finite and positive')
+    if config.flat_section not in ('rectangular', 'hex'):
+        raise ValueError('flat_section must be rectangular or hex')
+    if config.flat_section == 'hex' and (plain or n_cables != 2):
+        raise ValueError('hex section requires n_cables=2 without plain')
+    if config.flat_section == 'hex' and config.physics_mode == 'compound':
+        raise ValueError('Hex-section compound colliders are not implemented; use mesh for shape review')
     margin = config.collision_margin_m
     if margin is None:
         margin = 0.0 if config.physics_mode == 'compound' else config.geom_margin
@@ -508,6 +517,9 @@ if __name__ == "__main__":
     parser.add_argument('--arena-memory-mib', type=int,
                         help='Native MuJoCo arena MiB; default 128 for compound, otherwise compiler default')
     parser.add_argument('--plain', action='store_true')
+    parser.add_argument('--timestep', type=float, help='Timestep in seconds; overrides preset/params')
+    from spirob.sections import section_arguments, resolve_section_params
+    section_arguments(parser)
     parser.add_argument("--safe", action="store_true", help="Enable safe preset mode")
     parser.add_argument("--fast", action="store_true", help="Enable fast preset mode")
     parser.add_argument("--high", action="store_true", help="Enable high-fidelity preset mode")
@@ -548,11 +560,19 @@ if __name__ == "__main__":
     geometry = None
     if args.params:
         with open(args.params) as f:
-            raw = json.load(f)
+            raw = resolve_section_params(json.load(f), hex_section=args.hex_section,
+                                         hex_edge_ratio=args.hex_edge_ratio, plain=args.plain)
         config.post_gen = raw.get("post_gen", {})
+        config.flat_section = raw.get("flat_section", "rectangular")
+        config.timestep = config.post_gen.get("timestep", config.timestep)
         config.flat_thickness_ratio = float(raw.get('flat_thickness_ratio', 0.3))
         from spirob.geometry import from_params
         geometry = from_params(raw)
+
+    if (args.hex_section or args.hex_edge_ratio is not None) and not args.params:
+        parser.error('--hex-section/--hex-edge-ratio require --params and matching regenerated meshes')
+    if args.timestep is not None:
+        config.timestep = args.timestep
 
     out_xml = write_mjcf_from_sites_csv(
         csv_path=args.input,

@@ -7,6 +7,7 @@ owned by the existing generators.
 from __future__ import annotations
 import argparse
 import json
+import math
 import os
 from pathlib import Path
 import shutil
@@ -45,6 +46,9 @@ def main():
     p.add_argument('--output-dir',default='.',help='Destination for generated outputs')
     p.add_argument('--noclean',action='store_true',help='Compatibility flag; builds always use fresh staging')
     p.add_argument('--no-preview',action='store_true')
+    p.add_argument('--timestep', type=float, help='Simulation timestep in seconds; overrides the preset/params')
+    from spirob.sections import section_arguments, resolve_section_params
+    section_arguments(p)
     p.add_argument('--mesh-layout',choices=['shared','individual'],default='shared',
                    help='Reuse one complete-link STL plus a partial-base STL (default: shared)')
     p.add_argument('--collision-mode',choices=['mesh','capsule','compound'],
@@ -71,21 +75,32 @@ def main():
     a=p.parse_args()
     if a.fuse_cad and not a.cad: p.error('--fuse-cad requires --cad')
     params_path = Path(a.params).resolve()
-    params = json.loads(params_path.read_text(encoding='utf-8'))
+    params = resolve_section_params(json.loads(params_path.read_text(encoding='utf-8')),
+                                    hex_section=a.hex_section, hex_edge_ratio=a.hex_edge_ratio, plain=a.plain)
+    if a.timestep is not None:
+        if not math.isfinite(a.timestep) or a.timestep <= 0: p.error('--timestep must be finite and positive')
+        params['post_gen'] = dict(params.get('post_gen', {}), timestep=a.timestep)
+    if params.get('flat_section') == 'hex':
+        if a.collision_mode == 'compound':
+            p.error('--hex-section compound colliders are not implemented; use --collision-mode mesh for shape review')
+        if a.flat_thickness_m is not None or a.flat_edge_ratio is not None:
+            p.error('--hex-section uses flat_thickness_ratio in params and --hex-edge-ratio')
     from spirob_csv_generator import validate_params
     from spirob.geometry import from_params
     validate_params(params)
     geometry = from_params(params)
     if a.collision_mode == 'compound' and (a.plain or params['n_cables'] != 2):
         p.error('--collision-mode compound requires n_cables=2 without --plain')
-    if not a.no_preview:
-        preview=[ROOT/'preview.py','--params',params_path]
-        if not a.plain and params['n_cables']>=3: preview.append('--nlobe')
-        run_step(preview,'Geometry preview',ROOT)
     output = Path(a.output_dir).resolve(); output.mkdir(parents=True,exist_ok=True)
     # Stage alongside the destination so publishing uses same-filesystem renames.
     with tempfile.TemporaryDirectory(prefix='.spirob-build-',dir=output.parent) as td:
         stage=Path(td)
+        params_path=stage/'build_params.json'
+        params_path.write_text(json.dumps(params, indent=2)+'\n', encoding='utf-8')
+        if not a.no_preview:
+            preview=[ROOT/'preview.py','--params',params_path]
+            if not a.plain and params['n_cables']>=3: preview.append('--nlobe')
+            run_step(preview,'Geometry preview',ROOT)
         run_step([ROOT/'spirob_csv_generator.py','--params',params_path,'--yes'],'Generate CSV',stage)
         csv=Path('Geom_Data_CSV/Spirob_geom_data.csv')
         mesh=[ROOT/'csv2geom_nlobe.py','--in',csv,'--params',params_path,'--mesh-layout',a.mesh_layout]
@@ -123,7 +138,7 @@ def main():
         # Stages validated. Roll back replacements if publishing itself fails.
         backup=stage/'previous'; backup.mkdir()
         published=[]; moved=[]
-        names=['Geom_Data_CSV','meshes','spirob_physics_model.xml']+(['cad'] if a.cad else [])
+        names=['Geom_Data_CSV','meshes','spirob_physics_model.xml','build_params.json']+(['cad'] if a.cad else [])
         # Always retire a previous MJB when rebuilding: it must never describe
         # an older robot than the XML/meshes in this output directory.
         names.append('spirob_aligned.mjb')

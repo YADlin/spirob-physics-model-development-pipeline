@@ -148,9 +148,16 @@ def main():
     parser.add_argument('--plain', action='store_true', help='Use the plain revolved CAD reference')
     parser.add_argument('--reference-mjcf', help='Optional older XML for before/after inertia comparison')
     parser.add_argument('--json', help='Save full tensors and errors to JSON')
+    from spirob.sections import section_arguments, resolve_section_params
+    section_arguments(parser)
     args = parser.parse_args()
     try:
         params = json.loads(Path(args.params).read_text()) if args.params else None
+        if (args.hex_section or args.hex_edge_ratio is not None) and params is None:
+            raise ValueError("--hex-section/--hex-edge-ratio require --params")
+        if params is not None:
+            params = resolve_section_params(params, hex_section=args.hex_section,
+                                            hex_edge_ratio=args.hex_edge_ratio, plain=args.plain)
         report = audit(args.mjcf, params=params, links=args.links, density=args.density,
                        plain=args.plain, reference_xml=args.reference_mjcf)
     except (ValueError, OSError, KeyError) as exc:

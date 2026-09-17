@@ -33,34 +33,18 @@ def _positive(name, value, allow_zero=False):
 
 
 def _lens_element_mm(unit, thickness_mm, edge_ratio):
-    """Preserve all four XZ quad vertices, including the slanted slit faces.
-
-    Each half is a closed hexahedron. Triangular faces avoid non-planar loft
-    end wires (the centre and outer edge have different Z coordinates).
-    """
-    import cadquery as cq
-    points = unit.profile_xyz
-    footprint = [(points[i][0]*1000, points[i][2]*1000) for i in (0, 3, 2, 1)]
-    vertices = [cq.Vector(0 if i in (0, 3) else x,
-                          sign*thickness_mm/2*(1 if i in (0, 3) else edge_ratio), z)
-                for sign in (-1, 1) for i, (x, z) in enumerate(footprint)]
-    centre = sum(vertices, cq.Vector()) / 8
-    faces = []
-    for quad in ((0,1,2,3), (4,5,6,7), (0,1,5,4), (1,2,6,5), (2,3,7,6), (3,0,4,7)):
-        for ids in ((quad[0],quad[1],quad[2]), (quad[0],quad[2],quad[3])):
-            a, b, c = [vertices[i] for i in ids]
-            if (b-a).cross(c-a).dot((a+b+c)/3-centre) < 0:
-                b, c = c, b
-            faces.append(cq.Face.makeFromWires(cq.Wire.makePolygon([a,b,c], close=True)))
-    half = cq.Solid.makeSolid(cq.Shell.makeShell(faces)).fix()
-    return half.fuse(half.mirror('YZ')).clean()
+    from spirob.sections import lens_solid_mm
+    return lens_solid_mm(unit.profile_xyz, thickness_mm, edge_ratio)
 
 
 def _simulation_element_mm(unit, params, plain=False):
+    from spirob.sections import resolve_section_params
+    params = resolve_section_params(params, plain=plain)
     from csv2geom_nlobe import build_flat_element, make_profile_from_points, revolve_profile, add_nlobe_cut
     n = params['n_cables']
     if n == 2 and not plain:
-        shape = build_flat_element(unit.row, params.get('flat_thickness_ratio', .3))
+        shape = build_flat_element(unit.row, params.get('flat_thickness_ratio', .3),
+                                   hex_edge_ratio=params.get('hex_edge_ratio') if params.get('flat_section') == 'hex' else None)
         shape = shape.translate((0, 0, unit.origin_m[2]))
     else:
         shape = revolve_profile(make_profile_from_points(unit.profile_xyz))
@@ -79,6 +63,11 @@ def build_cad(units, geometry, params, *, profile='fabrication', plain=False,
               flat_thickness_m=None, flat_edge_ratio=None, neck_width_mm=1.0,
               cable_hole_diameter_mm=0.0, fuse=False):
     import cadquery as cq
+    from spirob.sections import resolve_section_params
+    params = resolve_section_params(params, plain=plain)
+    hex_section = params.get('flat_section') == 'hex'
+    if hex_section and (flat_thickness_m is not None or flat_edge_ratio is not None):
+        raise ValueError('For --hex-section use flat_thickness_ratio in params and --hex-edge-ratio, not manufacturing-only flat overrides')
     if profile not in ('fabrication', 'simulation'):
         raise ValueError('profile must be fabrication or simulation')
     edge = float(params.get('flat_edge_ratio', .25) if flat_edge_ratio is None else flat_edge_ratio)
@@ -96,7 +85,7 @@ def build_cad(units, geometry, params, *, profile='fabrication', plain=False,
     shapes = []
     for unit in units:
         shape = (_lens_element_mm(unit, thickness, edge)
-                 if profile == 'fabrication' and n == 2 and not plain
+                 if profile == 'fabrication' and n == 2 and not plain and not hex_section
                  else _simulation_element_mm(unit, params, plain))
         if not shape.isValid() or shape.Volume() <= 0:
             raise ValueError(f'{unit.link_name}: invalid element solid')
@@ -106,7 +95,22 @@ def build_cad(units, geometry, params, *, profile='fabrication', plain=False,
     if profile == 'fabrication':
         # A finite central ligament makes the zero-width simulation hinges a
         # connected physical design. Fuse in mm to avoid metre-scale OCC tolerances.
-        if n == 2 and not plain:
+        if hex_section:
+            # The ligament must cover the entire shared centreline at each
+            # hinge, including the ridge tips. A rectangular inset leaves
+            # zero-thickness touching edges outside it (non-manifold STL).
+            # Use a narrow six-sided loft following each link's ridge instead.
+            nodes = [(u.profile_xyz[0][2]*1000, u.outer_radius_m*1000) for u in units]
+            nodes.append((units[-1].profile_xyz[1][2]*1000, units[-1].outer_radius_m*1000))
+            wires = []
+            for z, radius in nodes:
+                h = radius*params.get('flat_thickness_ratio', .3)
+                he = h*(1-(1-params['hex_edge_ratio'])*neck/(2*radius))
+                xy = [(-neck/2, -he), (0, -h), (neck/2, -he),
+                      (neck/2, he), (0, h), (-neck/2, he)]
+                wires.append(cq.Wire.makePolygon([cq.Vector(x,y,z) for x,y in xy], close=True))
+            core = cq.Solid.makeLoft(wires, ruled=True)
+        elif n == 2 and not plain:
             core = cq.Workplane('XY').box(neck, thickness, z1-z0, centered=(True,True,False)).translate((0,0,z0)).val()
         else:
             core = cq.Solid.makeCylinder(neck/2, z1-z0, cq.Vector(0,0,z0))
@@ -135,11 +139,15 @@ def build_cad(units, geometry, params, *, profile='fabrication', plain=False,
     solid_count = len(combined.Solids())
     if profile == 'fabrication' and solid_count != 1:
         raise ValueError(f'Fabrication model has {solid_count} disconnected solids; adjust neck/hole dimensions')
-    return combined, {'profile': profile, 'solid_count': solid_count, 'valid': True,
+    section_name = ('plain' if plain else f'{n}-lobe' if n >= 3 else 'hex' if hex_section
+                    else 'fabrication_lens' if profile == 'fabrication' else 'rectangular')
+    return combined, {'profile': profile, 'flat_section': section_name,
+                      'hex_edge_ratio': params.get('hex_edge_ratio') if hex_section else None,
+                      'thickness_scales_with_link': (profile == 'simulation' or hex_section) if n == 2 and not plain else None, 'solid_count': solid_count, 'valid': True,
                       'neck_width_mm': neck if profile == 'fabrication' else None,
                       'cable_hole_diameter_mm': hole,
                       'flat_centre_thickness_mm': thickness if n == 2 and profile == 'fabrication' else None,
-                      'flat_edge_ratio': edge if n == 2 and profile == 'fabrication' else None,
+                      'flat_edge_ratio': (params['hex_edge_ratio'] if hex_section else edge) if n == 2 and profile == 'fabrication' else None,
                       'removed_hole_volume_mm3': before_volume-combined.Volume()}
 
 
@@ -152,6 +160,8 @@ def process_cad(csv_file, params, *, outdir='cad', prefix='spirob', fuse=False,
     from spirob.geometry import from_params
     from csv2geom_nlobe import build_unit_inputs
     from spirob_csv_generator import validate_params
+    from spirob.sections import resolve_section_params
+    params = resolve_section_params(params, plain=plain)
     validate_params(params)
     if not prefix or Path(prefix).name != prefix or prefix in ('.', '..'):
         raise ValueError('prefix must be a filename, without directory components')
@@ -214,8 +224,12 @@ def main():
     p.add_argument('--flat-thickness-m',type=float); p.add_argument('--flat-edge-ratio',type=float)
     p.add_argument('--neck-width-mm',type=float,default=1.0)
     p.add_argument('--cable-hole-diameter-mm',type=float,default=0.0)
+    from spirob.sections import section_arguments, resolve_section_params
+    section_arguments(p)
     a=p.parse_args()
-    process_cad(a.input,json.loads(Path(a.params).read_text(encoding='utf-8')),outdir=a.outdir,
+    params = resolve_section_params(json.loads(Path(a.params).read_text(encoding='utf-8')),
+                                    hex_section=a.hex_section, hex_edge_ratio=a.hex_edge_ratio, plain=a.plain)
+    process_cad(a.input,params,outdir=a.outdir,
                 prefix=a.prefix,fuse=a.fuse,plain=a.plain,profile=a.profile,
                 flat_thickness_m=a.flat_thickness_m,flat_edge_ratio=a.flat_edge_ratio,
                 neck_width_mm=a.neck_width_mm,cable_hole_diameter_mm=a.cable_hole_diameter_mm)
