@@ -8,7 +8,7 @@ lens helper. No code from Open-Spiral-Robots was copied.
 
 ## Dimensions and selection
 
-For each link, let R be half its width, H = R × `flat_thickness_ratio`, and
+For each link, let R be half its width, H be half its centre thickness, and
 e = `hex_edge_ratio`. The end-on vertices, in counterclockwise order, are:
 
 `(-R, -eH), (0, -H), (R, -eH), (R, eH), (0, H), (-R, eH)`.
@@ -16,8 +16,11 @@ e = `hex_edge_ratio`. The end-on vertices, in counterclockwise order, are:
 Both centre ridges run along the link. The two outer side walls remain flat.
 The default e is **0.75**, an adjustable design choice, not a dimensional
 measurement from the photographs. Centre thickness remains the existing
-parameter value: with `flat_thickness_ratio=0.3`, centre thickness is 30% of
-link width. Increase that parameter if a thicker section is wanted. A smaller
+base setting: `--base-thickness-mm auto` (the new default) makes centre
+thickness equal width. `--base-thickness-mm 20` sets the largest base link to
+20 mm; the tip scales by its width/base-width ratio. The equivalent JSON
+parameter is `base_thickness_m`, in metres, with `null` meaning auto.
+Older ratio-only parameter files keep their specified ratio. A smaller
 e makes the ridges sharper; e must be strictly between zero and one.
 
 Use either the command-line flag or these JSON fields:
@@ -42,7 +45,7 @@ From the repository root, using the existing uv environment:
 uv pip install --python .venv/bin/python -r requirements-dev.txt
 uv run python build.py \
   --params examples/params-two-cable.json \
-  --hex-section --hex-edge-ratio 0.75 \
+  --hex-section --hex-edge-ratio 0.75 --base-thickness-mm auto \
   --timestep 0.0001 \
   --collision-mode mesh --collision-margin-m 0 \
   --no-preview --cad --cad-profile simulation \
@@ -62,8 +65,8 @@ body axes. Its left column is the end-on XY projection; middle is XZ; right
 is a perspective surface view. It uses actual compiled mesh vertices and
 undoes MuJoCo's mesh-frame rotation. It does not alter geom frames or advance
 the simulation. Choose links with `--links link_001 link_010`, and use `--show`
-to open the plot window. The normal build preview remains a canonical geometry
-preview; use this tool to check the new transverse shape.
+to open the plot window. The flat-section/GUI preview now shows the selected XY outline and physical
+thickness; this tool additionally checks the actual compiled surface.
 
 `--timestep` overrides both the preset and `post_gen.timestep`. Without an
 override, the existing preset defaults remain. Builds save `build_params.json`
@@ -99,11 +102,12 @@ describe its un-drilled rigid-link solids; they do not include the fabrication
 flexure or model the drilled version's material removal. CAD dimensions and
 fabrication STL import units are **mm**.
 
-For this hex option, use `flat_thickness_ratio` and `--hex-edge-ratio` to choose
+For this hex option, use `--base-thickness-mm` and `--hex-edge-ratio` to choose
 dimensions for both simulation and CAD. The older fabrication-only
 `--flat-thickness-m`/`--flat-edge-ratio` overrides are rejected to avoid two
-different shapes under one build. Legacy fabrication without the new option
-keeps its existing constant-thickness lens behavior.
+different shapes under one build. Legacy ratio-mode fabrication without the hex option keeps its existing
+constant-thickness lens behavior. New absolute/auto mode also gives rectangular
+fabrication links the selected tapered thickness.
 
 ```bash
 uv run python tools/audit_inertia.py \
@@ -146,3 +150,6 @@ XZ shape and flat base mount, unchanged names/routing/gains, mass and inertia
 against exact CAD, shared-mesh scaling, custom edge ratios, rejected mismatched
 compound colliders, timestep precedence, and connected fabrication exports
 with and without holes.
+
+See [the parameter manual](PARAMETER_MANUAL.md) for every user setting and the
+base-to-tip thickness convention.

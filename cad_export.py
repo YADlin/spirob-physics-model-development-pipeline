@@ -43,7 +43,8 @@ def _simulation_element_mm(unit, params, plain=False):
     from csv2geom_nlobe import build_flat_element, make_profile_from_points, revolve_profile, add_nlobe_cut
     n = params['n_cables']
     if n == 2 and not plain:
-        shape = build_flat_element(unit.row, params.get('flat_thickness_ratio', .3),
+        from spirob.sections import resolve_flat_thickness_ratio
+        shape = build_flat_element(unit.row, resolve_flat_thickness_ratio(params),
                                    hex_edge_ratio=params.get('hex_edge_ratio') if params.get('flat_section') == 'hex' else None)
         shape = shape.translate((0, 0, unit.origin_m[2]))
     else:
@@ -66,15 +67,19 @@ def build_cad(units, geometry, params, *, profile='fabrication', plain=False,
     from spirob.sections import resolve_section_params
     params = resolve_section_params(params, plain=plain)
     hex_section = params.get('flat_section') == 'hex'
-    if hex_section and (flat_thickness_m is not None or flat_edge_ratio is not None):
-        raise ValueError('For --hex-section use flat_thickness_ratio in params and --hex-edge-ratio, not manufacturing-only flat overrides')
+    n = geometry.inputs.n_cables
+    from spirob.sections import resolve_flat_thickness_ratio
+    ratio = resolve_flat_thickness_ratio(params, geometry) if n == 2 and not plain else .3
+    scaled_flat = n == 2 and not plain and (hex_section or 'base_thickness_m' in params or 'flat_thickness_ratio' not in params)
+    if scaled_flat and (flat_thickness_m is not None or flat_edge_ratio is not None):
+        raise ValueError('Use --base-thickness-mm and --hex-edge-ratio with this section, not legacy manufacturing-only flat overrides')
     if profile not in ('fabrication', 'simulation'):
         raise ValueError('profile must be fabrication or simulation')
     edge = float(params.get('flat_edge_ratio', .25) if flat_edge_ratio is None else flat_edge_ratio)
     if not math.isfinite(edge) or not 0 < edge <= 1:
         raise ValueError('flat_edge_ratio must be in (0, 1]')
     thickness = _positive('flat_thickness_m', flat_thickness_m if flat_thickness_m is not None
-                          else params.get('flat_thickness_ratio', .3)*2*max(u.outer_radius_m for u in units))*1000
+                          else ratio*2*max(u.outer_radius_m for u in units))*1000
     neck = _positive('neck_width_mm', neck_width_mm)
     hole = _positive('cable_hole_diameter_mm', cable_hole_diameter_mm, True)
     n = geometry.inputs.n_cables
@@ -85,7 +90,7 @@ def build_cad(units, geometry, params, *, profile='fabrication', plain=False,
     shapes = []
     for unit in units:
         shape = (_lens_element_mm(unit, thickness, edge)
-                 if profile == 'fabrication' and n == 2 and not plain and not hex_section
+                 if profile == 'fabrication' and n == 2 and not plain and not scaled_flat
                  else _simulation_element_mm(unit, params, plain))
         if not shape.isValid() or shape.Volume() <= 0:
             raise ValueError(f'{unit.link_name}: invalid element solid')
@@ -95,7 +100,7 @@ def build_cad(units, geometry, params, *, profile='fabrication', plain=False,
     if profile == 'fabrication':
         # A finite central ligament makes the zero-width simulation hinges a
         # connected physical design. Fuse in mm to avoid metre-scale OCC tolerances.
-        if hex_section:
+        if scaled_flat:
             # The ligament must cover the entire shared centreline at each
             # hinge, including the ridge tips. A rectangular inset leaves
             # zero-thickness touching edges outside it (non-manifold STL).
@@ -104,10 +109,12 @@ def build_cad(units, geometry, params, *, profile='fabrication', plain=False,
             nodes.append((units[-1].profile_xyz[1][2]*1000, units[-1].outer_radius_m*1000))
             wires = []
             for z, radius in nodes:
-                h = radius*params.get('flat_thickness_ratio', .3)
-                he = h*(1-(1-params['hex_edge_ratio'])*neck/(2*radius))
+                h = radius*ratio
+                he = h*(1-(1-params.get('hex_edge_ratio', 1.))*neck/(2*radius))
                 xy = [(-neck/2, -he), (0, -h), (neck/2, -he),
                       (neck/2, he), (0, h), (-neck/2, he)]
+                if not hex_section:
+                    xy = [(-neck/2,-h), (neck/2,-h), (neck/2,h), (-neck/2,h)]
                 wires.append(cq.Wire.makePolygon([cq.Vector(x,y,z) for x,y in xy], close=True))
             core = cq.Solid.makeLoft(wires, ruled=True)
         elif n == 2 and not plain:
@@ -140,14 +147,14 @@ def build_cad(units, geometry, params, *, profile='fabrication', plain=False,
     if profile == 'fabrication' and solid_count != 1:
         raise ValueError(f'Fabrication model has {solid_count} disconnected solids; adjust neck/hole dimensions')
     section_name = ('plain' if plain else f'{n}-lobe' if n >= 3 else 'hex' if hex_section
-                    else 'fabrication_lens' if profile == 'fabrication' else 'rectangular')
+                    else 'fabrication_lens' if profile == 'fabrication' and not scaled_flat else 'rectangular')
     return combined, {'profile': profile, 'flat_section': section_name,
                       'hex_edge_ratio': params.get('hex_edge_ratio') if hex_section else None,
-                      'thickness_scales_with_link': (profile == 'simulation' or hex_section) if n == 2 and not plain else None, 'solid_count': solid_count, 'valid': True,
+                      'thickness_scales_with_link': (profile == 'simulation' or scaled_flat) if n == 2 and not plain else None, 'solid_count': solid_count, 'valid': True,
                       'neck_width_mm': neck if profile == 'fabrication' else None,
                       'cable_hole_diameter_mm': hole,
                       'flat_centre_thickness_mm': thickness if n == 2 and profile == 'fabrication' else None,
-                      'flat_edge_ratio': (params['hex_edge_ratio'] if hex_section else edge) if n == 2 and profile == 'fabrication' else None,
+                      'flat_edge_ratio': (params['hex_edge_ratio'] if hex_section else 1. if scaled_flat else edge) if n == 2 and profile == 'fabrication' else None,
                       'removed_hole_volume_mm3': before_volume-combined.Volume()}
 
 
@@ -228,7 +235,7 @@ def main():
     section_arguments(p)
     a=p.parse_args()
     params = resolve_section_params(json.loads(Path(a.params).read_text(encoding='utf-8')),
-                                    hex_section=a.hex_section, hex_edge_ratio=a.hex_edge_ratio, plain=a.plain)
+                                    hex_section=a.hex_section, hex_edge_ratio=a.hex_edge_ratio, base_thickness_mm=a.base_thickness_mm, plain=a.plain)
     process_cad(a.input,params,outdir=a.outdir,
                 prefix=a.prefix,fuse=a.fuse,plain=a.plain,profile=a.profile,
                 flat_thickness_m=a.flat_thickness_m,flat_edge_ratio=a.flat_edge_ratio,

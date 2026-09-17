@@ -541,74 +541,27 @@ def draw_nlobe_section_preview(quads, params,
 # ══════════════════════════════════════════════════════════════════════════════
 
 def draw_flat_section(ax, outer_radius, params, title="", quad=None):
-    """
-    Draw the flat cross-section on *ax*.
-
-    If *quad* is supplied (a 4-point array [A1, A0, B0, B1] from _build_quads),
-    the actual trapezoidal profile is drawn by projecting the quad into the XZ
-    plane: width = 2 * |B0x|, and the inner/outer widths differ because B0 and
-    B1 have slightly different x-magnitudes due to taper.  The thickness is
-    derived from flat_thickness_ratio applied to the outer half-width.
-
-    Falls back to a pure rectangle if quad is None.
-    """
-    thickness_ratio = float(params.get("flat_thickness_ratio", 0.3))
-
-    if quad is not None:
-        # A1, A0, B0, B1 — use the actual outer radii from the quad
-        _, _, B0, B1 = quad
-        r_bot = float(abs(B1[0]))   # outer radius at bottom of element # Change made on 19th March 26
-        r_top = float(abs(B0[0]))   # outer radius at top of element
-        ht    = r_bot * thickness_ratio   # half-thickness (same both ends)
-        # Trapezoid corners: (±r_bot at bottom, ±r_top at top)
-        trap_x = [ r_bot,  r_top, -r_top, -r_bot]
-        trap_y = [-ht,     ht,     ht,    -ht   ]
-        circ_R = r_bot
-    else:
-        r_bot  = outer_radius
-        r_top  = outer_radius
-        ht     = outer_radius * thickness_ratio
-        trap_x = [ r_bot,  r_top, -r_top, -r_bot]
-        trap_y = [-ht,     ht,     ht,    -ht   ]
-        circ_R = outer_radius
-
-    ax.set_aspect("equal")
-    ax.axis("off")
-    pad = circ_R * 0.55
-    ax.set_xlim(-circ_R - pad, circ_R + pad)
-    ax.set_ylim(-circ_R - pad, circ_R + pad)
-
-    # Ghost circle (original revolved profile for scale reference)
-    ax.add_patch(mpatches.Circle((0, 0), circ_R,
-                                 fc="#e8ecf4", ec="#8899bb",
-                                 lw=1.2, linestyle="--", zorder=1))
-
-    # Actual cross-section (trapezoid or rectangle)
-    ax.add_patch(mpatches.Polygon(
-        list(zip(trap_x, trap_y)), closed=True,
-        fc="#3a5fa0", ec="#1a2f5e", lw=1.2, alpha=0.75, zorder=2))
-
-    # Width annotation (bottom edge = widest)
-    ax.annotate("", xy=(r_bot, -ht * 1.8), xytext=(-r_bot, -ht * 1.8),
-                arrowprops=dict(arrowstyle="<->", color="#8e44ad", lw=1.2))
-    ax.text(0, -ht * 2.2, f"w = {r_bot*2*1e3:.2f} mm",
-            ha="center", va="top", fontsize=7.5, color="#8e44ad")
-
-    # Thickness annotation (right side)
-    ax.annotate("", xy=(r_bot * 1.5, ht), xytext=(r_bot * 1.5, -ht),
-                arrowprops=dict(arrowstyle="<->", color="#c0392b", lw=1.2))
-    ax.text(r_bot * 1.6, 0, f"t = {ht*2*1e3:.2f} mm",
-            ha="left", va="center", fontsize=7.5, color="#c0392b")
-
-    # Outer radius reference arrow
-    ax.annotate("", xy=(circ_R, 0), xytext=(0, 0),
-                arrowprops=dict(arrowstyle="<->", color="#27ae60",
-                                lw=1.1, linestyle="dashed"))
-    ax.text(circ_R / 2, circ_R * 0.08,
-            f"r = {circ_R*1e3:.2f} mm",
-            ha="center", va="bottom", fontsize=7, color="#27ae60")
-
-    ax.set_title(title, fontsize=8.5, fontweight="bold", pad=8, color="#1a2f5e")
+    """Draw the actual XY end-on outline, annotated in millimetres."""
+    from spirob.sections import resolve_flat_thickness_ratio, resolve_section_params
+    params = resolve_section_params(params)
+    r = float(outer_radius)*1000
+    h = r*resolve_flat_thickness_ratio(params)
+    edge = params.get('hex_edge_ratio', .75)
+    points = ([(-r,-edge*h),(0,-h),(r,-edge*h),(r,edge*h),(0,h),(-r,edge*h)]
+              if params.get('flat_section') == 'hex' else [(-r,-h),(r,-h),(r,h),(-r,h)])
+    ax.set_aspect('equal'); ax.axis('off')
+    span = max(r,h)
+    ax.set_xlim(-r-.35*span, r+.95*span)
+    ax.set_ylim(-span*1.65, span*1.25)
+    ax.add_patch(mpatches.Circle((0,0),r,fc='#e8ecf4',ec='#8899bb',lw=1,linestyle='--',zorder=1))
+    ax.add_patch(mpatches.Polygon(points,closed=True,fc='#3a5fa0',ec='#1a2f5e',lw=1.2,alpha=.8,zorder=2))
+    y = -span*1.2
+    ax.annotate('',xy=(r,y),xytext=(-r,y),arrowprops=dict(arrowstyle='<->',color='#8e44ad'))
+    ax.text(0,y-.1*span,f'Width = {2*r:.3f} mm',ha='center',va='top',fontsize=8,color='#8e44ad')
+    x = r+.25*span
+    ax.annotate('',xy=(x,h),xytext=(x,-h),arrowprops=dict(arrowstyle='<->',color='#c0392b'))
+    ax.text(x+.1*span,0,f'Centre\nthickness\n{2*h:.3f} mm',ha='left',va='center',fontsize=8,color='#c0392b')
+    ax.set_title(title,fontsize=9,fontweight='bold',pad=8,color='#1a2f5e')
 
 
 def draw_flat_section_preview(quads, params,
@@ -633,10 +586,12 @@ def draw_flat_section_preview(quads, params,
                       title=f"Tip element   (r = {tip_r*1e3:.2f} mm)",
                       quad=quads[-1])
 
-    t_ratio = params.get("flat_thickness_ratio", 0.3)
+    from spirob.sections import resolve_flat_thickness_ratio
+    t_ratio = resolve_flat_thickness_ratio(params)
     fig.text(0.5, 0.02,
-             f"flat_thickness_ratio = {t_ratio}    "
-             f"(dashed circle = original revolved profile for scale reference)",
+             f"Resolved thickness / width = {t_ratio:.6g}    "
+             f"(dashed circle = original revolved profile for scale reference)\n"
+             f"Base and tip panels use independent display scales.",
              ha="center", va="bottom", fontsize=8, color="#555555", style="italic")
 
     plt.tight_layout(rect=[0, 0.05, 1, 0.95])

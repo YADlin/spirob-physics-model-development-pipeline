@@ -18,17 +18,44 @@ _FIELDS=[('L','Continuous length (m)'),('d_tip','Nominal tip width (m)'),
          ('phi_deg','Full taper angle (deg)'),('Delta_theta_deg','Segment angle (deg)'),
          ('n_cables','Cables'),('tendon_inward_shift','Cable inward shift (m)'),
          ('nlobe_t','n-lobe t'),('notch_factor','Notch factor'),
-         ('flat_thickness_ratio','Flat thickness ratio')]
+         ('base_thickness_mm','Base centre thickness (mm or auto)'),
+         ('hex_edge_ratio','Hex edge / centre thickness')]
 
 
 def collect_params(original, values):
     from spirob_csv_generator import validate_params
     from spirob.geometry import from_params
+    from spirob.sections import resolve_section_params
     p=dict(original)
+    special = {'base_thickness_mm', 'flat_section', 'hex_edge_ratio'}
     for key,raw in values.items():
-        p[key]=int(raw) if key=='n_cables' else float(raw)
+        if key not in special:
+            p[key]=int(raw) if key=='n_cables' else float(raw)
+    if any(key in values for key in special):
+        if p['n_cables'] == 2:
+            p['flat_section'] = values.get('flat_section', p.get('flat_section', 'rectangular'))
+            if p['flat_section'] == 'hex':
+                p['hex_edge_ratio'] = float(values.get('hex_edge_ratio', p.get('hex_edge_ratio', .75)))
+            else:
+                p.pop('hex_edge_ratio', None)
+            p = resolve_section_params(p, base_thickness_mm=values.get('base_thickness_mm'))
+        else:
+            for key in ('base_thickness_m', 'flat_section', 'hex_edge_ratio'):
+                p.pop(key, None)
     validate_params(p); from_params(p)
     return p
+
+
+def thickness_field_value(params):
+    """Show the old ratio's actual base dimension when loading an old file."""
+    if params.get('n_cables') != 2:
+        return 'auto'
+    if 'base_thickness_m' in params:
+        return 'auto' if params['base_thickness_m'] is None else format(params['base_thickness_m']*1000, '.12g')
+    if 'flat_thickness_ratio' in params:
+        from spirob.sections import section_dimensions
+        return format(section_dimensions(params)['base']['centre_thickness_m']*1000, '.12g')
+    return 'auto'
 
 
 def build_command(params_path, output_dir, *, cad=False, profile='fabrication',
@@ -50,7 +77,7 @@ class DesignApp:
         self.root=root; self.params_path=Path(params_path).resolve()
         self.params=json.loads(self.params_path.read_text(encoding='utf-8'))
         self.messages=queue.Queue(); self.busy=False; self.process=None
-        self.values={}; self.buttons=[]
+        self.values={}; self.entries={}; self.buttons=[]
         root.title('SpiRob Design Tool'); root.geometry('1240x850')
         controls=ttk.Frame(root,padding=10); controls.pack(side='left',fill='y')
         display=ttk.Frame(root,padding=10); display.pack(side='right',fill='both',expand=True)
@@ -58,8 +85,16 @@ class DesignApp:
         form=ttk.Frame(controls); form.pack(fill='x')
         for i,(key,label) in enumerate(_FIELDS):
             ttk.Label(form,text=label).grid(row=i,column=0,sticky='w',pady=2)
-            value=tk.StringVar(value=str(self.params.get(key,''))); self.values[key]=value
-            ttk.Entry(form,textvariable=value,width=14).grid(row=i,column=1)
+            initial = thickness_field_value(self.params) if key == 'base_thickness_mm' else self.params.get(key, {'hex_edge_ratio':.75,'notch_factor':.25,'nlobe_t':.5}.get(key,''))
+            value=tk.StringVar(value=str(initial)); self.values[key]=value
+            entry=ttk.Entry(form,textvariable=value,width=14); entry.grid(row=i,column=1); self.entries[key]=entry
+        self.section=tk.StringVar(value=self.params.get('flat_section','rectangular'))
+        ttk.Label(form,text='Two-cable section').grid(row=len(_FIELDS),column=0,sticky='w')
+        self.section_choice=ttk.Combobox(form,textvariable=self.section,values=['rectangular','hex'],state='readonly',width=12)
+        self.section_choice.grid(row=len(_FIELDS),column=1)
+        self.values['n_cables'].trace_add('write',lambda *_:self.update_section_fields())
+        self.section.trace_add('write',lambda *_:self.update_section_fields())
+        self.update_section_fields()
         self.output=tk.StringVar(value=str(Path(output_dir).resolve()))
         ttk.Label(controls,text='Output folder').pack(anchor='w',pady=(8,0))
         ttk.Entry(controls,textvariable=self.output,width=38).pack(fill='x')
@@ -94,7 +129,16 @@ class DesignApp:
     def note(self,message):
         self.log.insert('end',message+'\n'); self.log.see('end')
 
-    def collect(self): return collect_params(self.params,{k:v.get() for k,v in self.values.items()})
+    def update_section_fields(self):
+        flat = self.values['n_cables'].get().strip() == '2'
+        self.entries['base_thickness_mm'].configure(state='normal' if flat else 'disabled')
+        self.entries['hex_edge_ratio'].configure(state='normal' if flat and self.section.get() == 'hex' else 'disabled')
+        self.section_choice.configure(state='readonly' if flat else 'disabled')
+        for key in ('nlobe_t', 'notch_factor'):
+            self.entries[key].configure(state='disabled' if flat else 'normal')
+
+    def collect(self):
+        return collect_params(self.params,dict({k:v.get() for k,v in self.values.items()},flat_section=self.section.get()))
 
     def save(self):
         from tkinter import messagebox
@@ -128,6 +172,10 @@ class DesignApp:
             if p['n_cables']>=3: pv.draw_nlobe_section(sec,r,p['n_cables'],p,title='Simulation section')
             else: pv.draw_flat_section(sec,r,p,title='Simulation section',quad=g.inverted_quads()[0])
             self.figure.tight_layout(); self.canvas.draw_idle()
+            if p['n_cables'] == 2:
+                from spirob.sections import section_dimensions
+                dimensions = section_dimensions(p,g)
+                self.note(f"Base centre thickness: {dimensions['base']['centre_thickness_m']*1000:.4f} mm; tip: {dimensions['tip']['centre_thickness_m']*1000:.4f} mm. User setting refers to the base.")
             lr=g.lengths
             self.note(f'{lr.n_units_total} elements; continuous {lr.requested_continuous_length_m*1000:.3f} mm; chord chain {lr.discrete_chord_length_m*1000:.3f} mm. Use exported CAD preview to inspect the fabrication lens/holes.')
         except Exception as e:self.note(f'Preview error: {e}')

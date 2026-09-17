@@ -37,3 +37,5 @@ main.py
 # Test cache
 .pytest_cache/
 MUJOCO_LOG.TXT
+
+/section_dimensions.json

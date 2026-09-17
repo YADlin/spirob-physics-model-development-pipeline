@@ -76,7 +76,7 @@ def main():
     if a.fuse_cad and not a.cad: p.error('--fuse-cad requires --cad')
     params_path = Path(a.params).resolve()
     params = resolve_section_params(json.loads(params_path.read_text(encoding='utf-8')),
-                                    hex_section=a.hex_section, hex_edge_ratio=a.hex_edge_ratio, plain=a.plain)
+                                    hex_section=a.hex_section, hex_edge_ratio=a.hex_edge_ratio, base_thickness_mm=a.base_thickness_mm, plain=a.plain)
     if a.timestep is not None:
         if not math.isfinite(a.timestep) or a.timestep <= 0: p.error('--timestep must be finite and positive')
         params['post_gen'] = dict(params.get('post_gen', {}), timestep=a.timestep)
@@ -89,6 +89,13 @@ def main():
     from spirob.geometry import from_params
     validate_params(params)
     geometry = from_params(params)
+    dimensions = None
+    if params['n_cables'] == 2 and not a.plain:
+        from spirob.sections import section_dimensions
+        dimensions = section_dimensions(params, geometry)
+        print(f"Base centre thickness: {dimensions['base']['centre_thickness_m']*1000:.6f} mm; "
+              f"tip: {dimensions['tip']['centre_thickness_m']*1000:.6f} mm "
+              f"({dimensions['mode']})", flush=True)
     if a.collision_mode == 'compound' and (a.plain or params['n_cables'] != 2):
         p.error('--collision-mode compound requires n_cables=2 without --plain')
     output = Path(a.output_dir).resolve(); output.mkdir(parents=True,exist_ok=True)
@@ -97,6 +104,8 @@ def main():
         stage=Path(td)
         params_path=stage/'build_params.json'
         params_path.write_text(json.dumps(params, indent=2)+'\n', encoding='utf-8')
+        if dimensions is not None:
+            (stage/'section_dimensions.json').write_text(json.dumps(dimensions, indent=2)+'\n', encoding='utf-8')
         if not a.no_preview:
             preview=[ROOT/'preview.py','--params',params_path]
             if not a.plain and params['n_cables']>=3: preview.append('--nlobe')
@@ -138,7 +147,7 @@ def main():
         # Stages validated. Roll back replacements if publishing itself fails.
         backup=stage/'previous'; backup.mkdir()
         published=[]; moved=[]
-        names=['Geom_Data_CSV','meshes','spirob_physics_model.xml','build_params.json']+(['cad'] if a.cad else [])
+        names=['Geom_Data_CSV','meshes','spirob_physics_model.xml','build_params.json','section_dimensions.json']+(['cad'] if a.cad else [])
         # Always retire a previous MJB when rebuilding: it must never describe
         # an older robot than the XML/meshes in this output directory.
         names.append('spirob_aligned.mjb')

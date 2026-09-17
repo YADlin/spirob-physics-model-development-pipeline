@@ -153,11 +153,11 @@ def main():
     args = parser.parse_args()
     try:
         params = json.loads(Path(args.params).read_text()) if args.params else None
-        if (args.hex_section or args.hex_edge_ratio is not None) and params is None:
-            raise ValueError("--hex-section/--hex-edge-ratio require --params")
+        if (args.hex_section or args.hex_edge_ratio is not None or args.base_thickness_mm is not None) and params is None:
+            raise ValueError("Section/thickness overrides require --params")
         if params is not None:
             params = resolve_section_params(params, hex_section=args.hex_section,
-                                            hex_edge_ratio=args.hex_edge_ratio, plain=args.plain)
+                                            hex_edge_ratio=args.hex_edge_ratio, base_thickness_mm=args.base_thickness_mm, plain=args.plain)
         report = audit(args.mjcf, params=params, links=args.links, density=args.density,
                        plain=args.plain, reference_xml=args.reference_mjcf)
     except (ValueError, OSError, KeyError) as exc:

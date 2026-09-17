@@ -561,16 +561,18 @@ if __name__ == "__main__":
     if args.params:
         with open(args.params) as f:
             raw = resolve_section_params(json.load(f), hex_section=args.hex_section,
-                                         hex_edge_ratio=args.hex_edge_ratio, plain=args.plain)
+                                         hex_edge_ratio=args.hex_edge_ratio, base_thickness_mm=args.base_thickness_mm, plain=args.plain)
         config.post_gen = raw.get("post_gen", {})
         config.flat_section = raw.get("flat_section", "rectangular")
         config.timestep = config.post_gen.get("timestep", config.timestep)
-        config.flat_thickness_ratio = float(raw.get('flat_thickness_ratio', 0.3))
+        if raw['n_cables'] == 2 and not args.plain:
+            from spirob.sections import resolve_flat_thickness_ratio
+            config.flat_thickness_ratio = resolve_flat_thickness_ratio(raw)
         from spirob.geometry import from_params
         geometry = from_params(raw)
 
-    if (args.hex_section or args.hex_edge_ratio is not None) and not args.params:
-        parser.error('--hex-section/--hex-edge-ratio require --params and matching regenerated meshes')
+    if (args.hex_section or args.hex_edge_ratio is not None or args.base_thickness_mm is not None) and not args.params:
+        parser.error('Section/thickness overrides require --params and matching regenerated meshes')
     if args.timestep is not None:
         config.timestep = args.timestep
 

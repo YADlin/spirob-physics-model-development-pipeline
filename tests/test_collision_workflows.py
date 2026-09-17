@@ -16,6 +16,7 @@ from csv2xml import MJCFConfig, write_mjcf_from_sites_csv
 from spirob.collision import flat_outline, rounded_flat_primitives
 from spirob.geometry import from_params
 from spirob.mesh_assets import mesh_assets
+from spirob.sections import resolve_flat_thickness_ratio
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -59,7 +60,7 @@ def models(request, tmp_path_factory):
         cfg = MJCFConfig(physics_mode=mode, joint_type='hinge' if request.param == 2 else 'ball',
                          mesh_layout='shared', phi_deg=params['phi_deg'], post_gen=params['post_gen'],
                          tendon_inward_shift=params['tendon_inward_shift'],
-                         flat_thickness_ratio=params['flat_thickness_ratio'])
+                         flat_thickness_ratio=resolve_flat_thickness_ratio(params) if params['n_cables']==2 else .3)
         paths[mode] = folder/f'{mode}.xml'
         write_mjcf_from_sites_csv(str(folder/'Geom_Data_CSV/Spirob_geom_data.csv'), str(paths[mode]),
                                  str(folder/'meshes'), config=cfg, geometry=geo)
@@ -134,14 +135,14 @@ def test_compound_shape_fits_every_flat_link(policy, radius_ratio):
     geo = from_params(params)
     for i in range(geo.n_units):
         cad = Polygon(flat_outline(geo, i))
-        shapes = rounded_flat_primitives(geo, i, params['flat_thickness_ratio'], radius_ratio)
+        shapes = rounded_flat_primitives(geo, i, resolve_flat_thickness_ratio(params), radius_ratio)
         union = primitive_outline(shapes)
         assert union.geom_type == 'Polygon' and len(union.interiors) == 0
         assert union.difference(cad).area < cad.area*1e-12
         assert union.area/cad.area > 0.99
         radius = geo.units[i].realized_width_m/2 * radius_ratio
         assert cad.hausdorff_distance(union) < 0.5*radius
-        expected_half_y = geo.units[i].realized_width_m/2 * params['flat_thickness_ratio']
+        expected_half_y = geo.units[i].realized_width_m/2 * resolve_flat_thickness_ratio(params)
         for shape in shapes:
             if shape['type'] == 'cylinder':
                 p = np.fromstring(shape['fromto'], sep=' ')
@@ -170,7 +171,7 @@ def test_native_contacts_on_flat_faces_and_rounded_corners(models, index, surfac
         if element.tag in ['inertial', 'geom']:
             body.append(copy.deepcopy(element))
     p = flat_outline(geo, index)
-    shapes = rounded_flat_primitives(geo, index, params['flat_thickness_ratio'])
+    shapes = rounded_flat_primitives(geo, index, resolve_flat_thickness_ratio(params))
     radius = float(shapes[1]['size'])
     center = np.fromstring(shapes[1]['fromto'], sep=' ')[[0, 2]]
     if surface == 'corner':

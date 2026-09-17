@@ -4,6 +4,10 @@ Generate canonical spiral geometry, shared simulation meshes, MuJoCo MJCF,
 and whole-robot STEP/STL fabrication models. Two cables use a flat section;
 three or more cables use the existing n-lobe construction.
 
+Read the [parameter manual](docs/PARAMETER_MANUAL.md), also available as an
+[offline HTML manual](docs/PARAMETER_MANUAL.html), for units, defaults, base/tip
+thickness, section shapes, CAD options, dynamics and all build/tool flags.
+
 ## Install
 
 Use a dedicated Python 3.12 environment with uv (repairs tested on 3.12.13/14):
@@ -35,7 +39,8 @@ Output:
 | `meshes/link_template.stl` | Shared complete-link mesh; MJCF scales it per link | m |
 | `meshes/link_001.stl` | Separate partial-base mesh, when present | m |
 | `spirob_physics_model.xml` | Compiled and checked MuJoCo model | m |
-| `build_params.json` | Geometry parameters with CLI section/timestep overrides | Same as input params |
+| `build_params.json` | Geometry parameters with CLI section/thickness/timestep overrides | Same as input params |
+| `section_dimensions.json` | Two-cable base/tip and per-link width/centre/edge thickness | m |
 | `cad/spirob.step` | Full CAD solid, base at z=0, +Z toward tip | mm |
 | `cad/spirob.stl` | Full fabrication mesh; import into slicer as mm | mm |
 | `cad/spirob_cad_report.json` | Dimensions, topology checks, parameters and hashes | Explicit per field |
@@ -53,14 +58,19 @@ python build.py --params examples/params-four-cable.json --no-preview --output-d
 ## Optional six-sided two-cable section
 
 ```bash
-uv run python build.py --params examples/params-two-cable.json --hex-section --hex-edge-ratio 0.75 --timestep 0.0001 --collision-mode mesh --collision-margin-m 0 --no-preview --cad --cad-profile simulation --output-dir build/hex-review
+uv run python build.py --params examples/params-two-cable.json --hex-section --hex-edge-ratio 0.75 --base-thickness-mm auto --timestep 0.0001 --collision-mode mesh --collision-margin-m 0 --no-preview --cad --cad-profile simulation --output-dir build/hex-review
 uv run python tools/inspect_section.py --mjcf build/hex-review/spirob_physics_model.xml --out build/hex-review/cross_sections.png
 ```
 
 `--hex-section` gives the **XY end-on view** six sides: two centre ridges and
-short flat outer side walls. `--hex-edge-ratio` controls edge/centre thickness;
-`flat_thickness_ratio` in params controls centre thickness/width. The centre
-thickness and link dimensions retain your parameter values. Omitting the flag
+short flat outer side walls. `--hex-edge-ratio` controls edge/centre thickness.
+Use `--base-thickness-mm 20` to set the **largest base link's centre thickness**
+to 20 mm. Each following link uses `T_i = T_base * W_i / W_base`; tip thickness
+is derived. The new initial setting, `--base-thickness-mm auto` (JSON
+`"base_thickness_m": null`), makes every link's centre thickness equal its width.
+The supplied geometry gives 31.087574 mm at the base and 7.073275 mm at the tip.
+Older ratio-only files retain their existing thickness until overridden.
+Omitting the flag
 and the `flat_section` parameter keeps the existing rectangular simulation
 section. The equivalent saved configuration is `examples/params-two-cable-hex.json`.
 

@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 import trimesh
 
-from spirob.sections import resolve_section_params
+from spirob.sections import resolve_section_params, resolve_flat_thickness_ratio
 from tools.inspect_section import compiled_surface, projection
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -54,7 +54,7 @@ def test_every_compiled_link_has_six_transverse_sides(hex_build):
         outline = np.asarray(poly.exterior.coords)[:-1]
         assert len(outline) == 6
         radius, height = np.max(np.abs(outline), axis=0)
-        assert height/radius == pytest.approx(params['flat_thickness_ratio'], rel=1e-6)
+        assert height/radius == pytest.approx(resolve_flat_thickness_ratio(params), rel=1e-6)
         outer = outline[np.abs(outline[:, 0]) > radius*.9]
         assert len(outer) == 4
         np.testing.assert_allclose(np.abs(outer[:, 1])/height, .75, rtol=1e-6)

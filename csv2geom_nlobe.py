@@ -446,8 +446,9 @@ def process_csv(csv_file, outdir="meshes", revolve_axis="y", angle=360,
     from spirob.sections import resolve_section_params
     section_params = resolve_section_params(params or {'n_cables': n_cables}, plain=plain)
     hex_edge = section_params.get('hex_edge_ratio') if section_params.get('flat_section') == 'hex' else None
-    if hex_edge is not None:
-        flat_thickness_ratio = section_params.get('flat_thickness_ratio', flat_thickness_ratio)
+    if n_cables == 2 and not plain and params is not None:
+        from spirob.sections import resolve_flat_thickness_ratio
+        flat_thickness_ratio = resolve_flat_thickness_ratio(section_params, geometry)
     draft_angle_deg = phi_deg / 2.0
     flat_mode       = (not plain) and (n_cables <= 2)
 
@@ -570,7 +571,7 @@ if __name__ == "__main__":
 
     with open(args.params, encoding="utf-8") as f:
         params = resolve_section_params(json.load(f), hex_section=args.hex_section,
-                                        hex_edge_ratio=args.hex_edge_ratio, plain=args.plain)
+                                        hex_edge_ratio=args.hex_edge_ratio, base_thickness_mm=args.base_thickness_mm, plain=args.plain)
 
     # n_cables and phi_deg are deliberately NOT passed: they come from the
     # canonical model, so the CLI exercises the same path every other caller

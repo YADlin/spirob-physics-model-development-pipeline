@@ -1,0 +1,1235 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang xml:lang>
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>SpiRob generator parameter manual</title>
+  <style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+
+ul.task-list[class]{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+font-size: inherit;
+width: 0.8em;
+margin: 0 0.8em 0.2em -1.6em;
+vertical-align: middle;
+}
+.display.math{display: block; text-align: center; margin: 0.5rem auto;}
+
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+{ counter-reset: source-line 0; }
+pre.numberSource code > span
+{ position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+{ content: counter(source-line);
+position: relative; left: -1em; text-align: right; vertical-align: baseline;
+border: none; display: inline-block;
+-webkit-touch-callout: none; -webkit-user-select: none;
+-khtml-user-select: none; -moz-user-select: none;
+-ms-user-select: none; user-select: none;
+padding: 0 4px; width: 4em;
+color: #aaaaaa;
+}
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa; padding-left: 4px; }
+div.sourceCode
+{ }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } 
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.at { color: #7d9029; } 
+code span.bn { color: #40a070; } 
+code span.bu { color: #008000; } 
+code span.cf { color: #007020; font-weight: bold; } 
+code span.ch { color: #4070a0; } 
+code span.cn { color: #880000; } 
+code span.co { color: #60a0b0; font-style: italic; } 
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.do { color: #ba2121; font-style: italic; } 
+code span.dt { color: #902000; } 
+code span.dv { color: #40a070; } 
+code span.er { color: #ff0000; font-weight: bold; } 
+code span.ex { } 
+code span.fl { color: #40a070; } 
+code span.fu { color: #06287e; } 
+code span.im { color: #008000; font-weight: bold; } 
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.kw { color: #007020; font-weight: bold; } 
+code span.op { color: #666666; } 
+code span.ot { color: #007020; } 
+code span.pp { color: #bc7a00; } 
+code span.sc { color: #4070a0; } 
+code span.ss { color: #bb6688; } 
+code span.st { color: #4070a0; } 
+code span.va { color: #19177c; } 
+code span.vs { color: #4070a0; } 
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } 
+</style>
+  <style type="text/css">body { max-width: 1120px; margin: 0 auto; padding: 40px 28px; font: 16px/1.6 system-ui, sans-serif; color: #243447; background: #fff; }
+h1, h2, h3 { color: #163e62; line-height: 1.25; }
+h1 { border-bottom: 4px solid #23859c; padding-bottom: 16px; }
+h2 { margin-top: 2.8em; border-bottom: 1px solid #cbd9e4; padding-bottom: 9px; }
+a { color: #006a88; }
+#TOC { padding: 18px 24px; background: #eef5f8; border-radius: 6px; }
+#TOC > ul { columns: 2; column-gap: 32px; }
+#TOC li { break-inside: avoid; }
+table { width: 100%; border-collapse: collapse; margin: 22px 0; font-size: .94em; }
+th { background: #163e62; color: white; text-align: left; }
+th, td { border: 1px solid #d4dfe7; padding: 10px 12px; vertical-align: top; }
+tr:nth-child(even) td { background: #f4f8fa; }
+code { font-size: .91em; background: #edf2f5; padding: 1px 4px; overflow-wrap: anywhere; }
+pre { background: #f1f5f8; border-left: 3px solid #23859c; padding: 16px; overflow-x: auto; }
+pre code { background: transparent; padding: 0; overflow-wrap: normal; }
+@media (max-width: 700px) { body { padding: 18px 12px; font-size: 15px; } #TOC > ul { columns: 1; } table { display: block; overflow-x: auto; } }
+@media print { body { max-width: none; padding: 0; font-size: 10pt; } h2, h3 { break-after: avoid; } tr, pre { break-inside: avoid; } #TOC > ul { columns: 2; } }
+</style>
+</head>
+<body>
+<nav id="TOC" role="doc-toc">
+<ul>
+<li><a href="#spirob-generator-parameter-manual" id="toc-spirob-generator-parameter-manual">SpiRob generator parameter
+manual</a>
+<ul>
+<li><a href="#start-here-which-dimension-are-you-changing" id="toc-start-here-which-dimension-are-you-changing">1. Start here:
+which dimension are you changing?</a></li>
+<li><a href="#quick-commands" id="toc-quick-commands">2. Quick
+commands</a></li>
+<li><a href="#core-geometry-parameters-in-json" id="toc-core-geometry-parameters-in-json">3. Core geometry parameters in
+JSON</a></li>
+<li><a href="#section-parameters-two-cables-versus-n-cables" id="toc-section-parameters-two-cables-versus-n-cables">4. Section
+parameters: two cables versus n cables</a></li>
+<li><a href="#placement-and-dynamics-the-post_gen-object" id="toc-placement-and-dynamics-the-post_gen-object">5. Placement and
+dynamics: the <code>post_gen</code> object</a></li>
+<li><a href="#every-build.py-option" id="toc-every-build.py-option">6.
+Every <code>build.py</code> option</a></li>
+<li><a href="#desktop-gui" id="toc-desktop-gui">7. Desktop GUI</a></li>
+<li><a href="#output-files-and-audit-procedure" id="toc-output-files-and-audit-procedure">8. Output files and audit
+procedure</a></li>
+<li><a href="#supporting-command-line-tools" id="toc-supporting-command-line-tools">9. Supporting command-line
+tools</a></li>
+<li><a href="#common-sources-of-confusion" id="toc-common-sources-of-confusion">10. Common sources of
+confusion</a></li>
+<li><a href="#updating-this-manual" id="toc-updating-this-manual">11.
+Updating this manual</a></li>
+</ul></li>
+</ul>
+</nav>
+<h1 id="spirob-generator-parameter-manual">SpiRob generator parameter
+manual</h1>
+<p>This manual describes the generator’s JSON parameters, build options,
+desktop controls and supporting tools. Use Python 3.12 and the supplied
+uv requirements. Commands below run from the repository root. JSON files
+cannot contain comments.</p>
+<h2 id="start-here-which-dimension-are-you-changing">1. Start here:
+which dimension are you changing?</h2>
+<p>Each link has a local body frame. <strong>Z</strong> runs along the
+straight robot, from base towards tip; <strong>X</strong> spans the
+two-cable link’s width; <strong>Y</strong> spans its thickness. The
+end-on view is therefore the <strong>XY</strong> view. The robot’s world
+pose can rotate these directions; a world-axis measurement is not
+necessarily local thickness.</p>
+<p>For a two-cable robot, the adjustable absolute dimension is
+<strong>the centre thickness of the largest base link,
+<code>link_001</code></strong>, along local Y. It includes both sides of
+the centre plane. It is not half-thickness, axial link length, flexure
+width, cable-hole diameter, or thickness at a hexagon’s outer edge.</p>
+<p>Let <code>W_base</code> be the generated base-link width,
+<code>W_i</code> another link’s width and <code>T_base</code> the chosen
+centre thickness. The generator uses:</p>
+<pre class="text"><code>T_i = T_base × W_i / W_base
+T_tip = T_base × W_tip / W_base</code></pre>
+<p>Thus <strong>base thickness is the independent setting; tip thickness
+is calculated</strong>. The thickness is not constant along the chain.
+This scaling lets all complete links keep sharing a single STL template.
+A partial base uses its own STL. To target a particular tip thickness,
+use <code>T_base = T_tip × W_base / W_tip</code>. Changing the absolute
+base thickness does not change X widths or Z link lengths.</p>
+<p>The new initial setting is <strong>thickness equals width</strong>:
+<code>T_i = W_i</code> for every link. In a rectangular section this
+makes its XY envelope square. A hex section has the same square bounding
+envelope but retains its six-sided outline.</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>User interface</th>
+<th>Thickness equals width</th>
+<th>Example: 20 mm at the base</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Build command</td>
+<td><code>--base-thickness-mm auto</code></td>
+<td><code>--base-thickness-mm 20</code></td>
+</tr>
+<tr class="even">
+<td>JSON parameter</td>
+<td><code>&quot;base_thickness_m&quot;: null</code></td>
+<td><code>&quot;base_thickness_m&quot;: 0.020</code></td>
+</tr>
+<tr class="odd">
+<td>Desktop GUI</td>
+<td>Enter <code>auto</code> in <strong>Base centre thickness (mm or
+auto)</strong></td>
+<td>Enter <code>20</code></td>
+</tr>
+</tbody>
+</table>
+<p>For the supplied two-cable geometry (<code>L=0.22628</code>,
+<code>d_tip=0.007139</code>, <code>phi_deg=6.3</code>,
+<code>Delta_theta_deg=30.78</code>, exact-length policy):</p>
+<table>
+<thead>
+<tr class="header">
+<th>Location</th>
+<th style="text-align: right;">Actual generated width</th>
+<th style="text-align: right;">Initial centre thickness</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Base, <code>link_001</code></td>
+<td style="text-align: right;">31.087574 mm</td>
+<td style="text-align: right;">31.087574 mm</td>
+</tr>
+<tr class="even">
+<td>Tip, <code>link_021</code></td>
+<td style="text-align: right;">7.073275 mm</td>
+<td style="text-align: right;">7.073275 mm</td>
+</tr>
+</tbody>
+</table>
+<p>These are generated dimensions, not measurements of the photograph.
+The nominal <code>d_tip</code> input is 7.139 mm; the discretised link’s
+width is slightly different. The authoritative per-link numbers are
+saved in <strong><code>section_dimensions.json</code></strong>.</p>
+<p><strong>Explicit versus automatic:</strong> a numeric
+<code>base_thickness_m</code> stays fixed when other geometry inputs
+change. <code>null</code>/<code>auto</code> recalculates thickness to
+equal the new widths. Older files with only
+<code>flat_thickness_ratio</code> retain that ratio. Do not put both
+thickness fields in one JSON file. The CLI thickness override removes
+the old ratio from the saved build parameters, so it can safely override
+an older file. With neither field present, the two-cable default is
+ratio 1.</p>
+<h2 id="quick-commands">2. Quick commands</h2>
+<p>Install into your existing environment:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> pip install <span class="at">--python</span> .venv/bin/python <span class="at">-r</span> requirements-dev.txt</span></code></pre></div>
+<p>For a fresh environment, run <code>uv venv --python 3.12 .venv</code>
+first.</p>
+<p>Build the initial six-sided two-cable model:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> run python build.py <span class="dt">\</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">--params</span> examples/params-two-cable-hex.json <span class="dt">\</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">--base-thickness-mm</span> auto <span class="at">--timestep</span> 0.0001 <span class="dt">\</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">--collision-mode</span> mesh <span class="at">--collision-margin-m</span> 0 <span class="dt">\</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">--no-preview</span> <span class="at">--cad</span> <span class="at">--cad-profile</span> simulation <span class="dt">\</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">--output-dir</span> build/two-cable-square</span></code></pre></div>
+<p>Build the same shape with a 20 mm base centre thickness:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> run python build.py <span class="dt">\</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">--params</span> examples/params-two-cable-hex.json <span class="dt">\</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">--base-thickness-mm</span> 20 <span class="at">--timestep</span> 0.0001 <span class="dt">\</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">--collision-mode</span> mesh <span class="at">--collision-margin-m</span> 0 <span class="dt">\</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">--no-preview</span> <span class="at">--output-dir</span> build/two-cable-20mm</span></code></pre></div>
+<p>Use <code>examples/params-two-cable.json</code> for the rectangular
+section. Add <code>--hex-section</code> to select the hex outline from a
+rectangular parameter file. Use
+<code>examples/params-three-cable.json</code> or
+<code>examples/params-four-cable.json</code> for n-lobe sections; do not
+pass the two-cable thickness or hex flags to them.</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> run python build.py <span class="at">--params</span> examples/params-three-cable.json <span class="dt">\</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">--no-preview</span> <span class="at">--timestep</span> 0.0001 <span class="at">--output-dir</span> build/three-cable</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> run python tools/inspect_section.py <span class="dt">\</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">--mjcf</span> build/two-cable-square/spirob_physics_model.xml <span class="dt">\</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">--out</span> build/two-cable-square/sections.png <span class="at">--show</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> run python <span class="at">-m</span> mujoco.viewer <span class="dt">\</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>  <span class="at">--mjcf</span><span class="op">=</span>build/two-cable-square/spirob_physics_model.xml</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> run python design_gui.py <span class="dt">\</span></span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>  <span class="at">--params</span> examples/params-two-cable-hex.json <span class="dt">\</span></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>  <span class="at">--output-dir</span> build/gui-review</span></code></pre></div>
+<h2 id="core-geometry-parameters-in-json">3. Core geometry parameters in
+JSON</h2>
+<p>The sample values below describe the shipped examples, not universal
+defaults. These parameters are common to two-cable and n-cable
+models.</p>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Parameter</th>
+<th>Unit; sample</th>
+<th>Meaning and effect</th>
+<th>Accepted values / notes</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>L</code></td>
+<td>m; <code>0.22628</code></td>
+<td>Requested <strong>continuous spiral arc length</strong>. It
+determines the robot geometry before discretisation.</td>
+<td>Positive finite number. It is not exactly the straight articulated
+chain length.</td>
+</tr>
+<tr class="even">
+<td><code>d_tip</code></td>
+<td>m; <code>0.007139</code></td>
+<td>Nominal tip width in the continuous spiral construction. Controls
+the small end’s geometric scale.</td>
+<td>Positive finite number. Neither final discretised width nor an
+n-lobe STL’s XY bounding diameter is guaranteed to equal it.</td>
+</tr>
+<tr class="odd">
+<td><code>phi_deg</code></td>
+<td>degrees; <code>6.3</code></td>
+<td>Full included taper angle. The half-width slope uses
+<code>tan(phi_deg/2)</code>.</td>
+<td>Strictly between 0 and 45 degrees. Do not enter the half-angle.</td>
+</tr>
+<tr class="even">
+<td><code>Delta_theta_deg</code></td>
+<td>degrees; <code>30.78</code></td>
+<td>Angular span of one nominal segment in the curled spiral. Larger
+values generally produce fewer, coarser links.</td>
+<td>Strictly between 0 and 180 degrees. This is not a MuJoCo joint
+limit.</td>
+</tr>
+<tr class="odd">
+<td><code>n_cables</code></td>
+<td>integer; <code>2</code>, <code>3</code> or <code>4</code></td>
+<td>Number of cable routes and actuators; also chooses the normal
+section family.</td>
+<td>Integer at least 2. Two uses flat links/hinge joints; three and
+above use n-lobe links/ball joints.</td>
+</tr>
+<tr class="even">
+<td><code>terminal_unit_policy</code></td>
+<td>text; <code>exact_requested_length</code></td>
+<td>Decides how to finish a requested length that does not contain a
+whole number of segments.</td>
+<td><code>exact_requested_length</code> preserves continuous length and
+may make a partial base. <code>whole_units</code> extends to a complete
+segment boundary; never shortens. Default: exact.</td>
+</tr>
+<tr class="odd">
+<td><code>tendon_inward_shift</code></td>
+<td>m; <code>0.0015</code></td>
+<td>Moves the cable routing sites radially inward from the nominal outer
+edge.</td>
+<td>Nonnegative and less than <code>d_tip/2</code>. It changes routing
+and moment arms, not the STL’s outer silhouette.</td>
+</tr>
+<tr class="even">
+<td><code>show_preview</code></td>
+<td>Boolean; <code>true</code></td>
+<td>Retained compatibility field, required by the parameter
+validator.</td>
+<td>Currently printed/validated by the CSV stage; it does
+<strong>not</strong> control <code>build.py</code>’s preview. Use
+<code>--no-preview</code> to suppress that preview.</td>
+</tr>
+</tbody>
+</table>
+<p>The canonical Python geometry API also accepts
+<code>taper_angle_deg</code> as an alias for <code>phi_deg</code>; if
+both exist they must agree. The full build’s validator still requires
+<code>phi_deg</code>, so use that spelling in user parameter files.</p>
+<p>Length changes can alter segment count and the size of the partial
+base. Some very short partial remainders cannot retain a valid flat
+mounting face and are rejected. All reported dimensions use the
+canonical generated geometry.</p>
+<p>The current cable-site rule includes an intra-link radial correction:
+<code>r1 = max(r_outer - shift, 1e-6)</code> and
+<code>r2 = max(r_outer - shift - dz*tan(phi/2), 1e-6)</code>, in metres.
+Consequently the offset is not identical at both ends of a link. This
+retained routing behavior is documented as F-08 in
+<code>GEOMETRY_AUDIT.md</code>; changing thickness does not change
+it.</p>
+<h2 id="section-parameters-two-cables-versus-n-cables">4. Section
+parameters: two cables versus n cables</h2>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Parameter</th>
+<th>Applies to</th>
+<th>Meaning</th>
+<th>Default / valid values</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>base_thickness_m</code></td>
+<td>Two-cable flat section</td>
+<td>Full centre thickness of the actual largest base link, along local
+Y. All other link thicknesses scale with width.</td>
+<td><code>null</code> for thickness=width; otherwise positive finite
+metres. CLI/GUI use mm instead. A numeric value is rejected for n≥3 or
+<code>--plain</code>.</td>
+</tr>
+<tr class="even">
+<td><code>flat_section</code></td>
+<td>Two cables</td>
+<td>Shape of the XY end-on outline.</td>
+<td><code>rectangular</code> or <code>hex</code>; default
+rectangular.</td>
+</tr>
+<tr class="odd">
+<td><code>hex_edge_ratio</code></td>
+<td>Two-cable hex only</td>
+<td>Outer-edge thickness divided by centre ridge-to-ridge thickness.
+Edge thickness at link i is <code>e*T_i</code>.</td>
+<td>Default <code>0.75</code>; strictly <code>0 &lt; e &lt; 1</code>.
+Smaller e gives sharper ridges.</td>
+</tr>
+<tr class="even">
+<td><code>flat_thickness_ratio</code></td>
+<td>Legacy two-cable files</td>
+<td>Centre thickness divided by link width; equivalent to
+<code>T_base/W_base</code>.</td>
+<td>Legacy validated range <code>[0.05, 1]</code>. Retained only for
+compatibility. Cannot coexist with <code>base_thickness_m</code>. New
+files use the absolute/auto parameter.</td>
+</tr>
+<tr class="odd">
+<td><code>nlobe_t</code></td>
+<td>n≥3, without <code>--plain</code></td>
+<td>Changes the polygon cutter radius relative to the revolved surface;
+controls the balance between flat facets and remaining circular
+portions.</td>
+<td>Default <code>0.5</code>; range <code>[0,1]</code>. See exact
+interpretation below.</td>
+</tr>
+<tr class="even">
+<td><code>notch_factor</code></td>
+<td>n≥3, without <code>--plain</code></td>
+<td>Circular notch radius as a fraction of half the polygon side length.
+Larger values remove more material.</td>
+<td>Default <code>0.25</code>; validator accepts <code>[0,0.4]</code>.
+Use a positive value: zero currently produces a degenerate zero-radius
+CAD cutter.</td>
+</tr>
+<tr class="odd">
+<td><code>flat_edge_ratio</code></td>
+<td>Legacy two-cable fabrication only</td>
+<td>Edge/centre thickness ratio for the old constant-thickness
+manufacturing lens.</td>
+<td>Default <code>0.25</code>; <code>0 &lt; e ≤ 1</code>. It does not
+select or change the simulation hex section. Prefer
+<code>hex_edge_ratio</code> for the current shape.</td>
+</tr>
+</tbody>
+</table>
+<p>For a hex section of width <code>2R</code>, centre half-thickness
+<code>H=T_i/2</code>, and edge ratio e, the six XY vertices are:</p>
+<pre class="text"><code>(-R,-eH), (0,-H), (R,-eH), (R,eH), (0,H), (-R,eH)</code></pre>
+<p>This is generally not a regular hexagon. Two flat outer side walls
+connect four sloping faces. The existing XZ slopes and the partial
+base’s flat mounting face are retained.</p>
+<p>For n≥3, the user does not independently set Y thickness. The section
+is constructed around the longitudinal axis using the spiral radius R,
+cable count n, a drafted polygon cutter and circular notches. The
+cutter’s starting circumradius is:</p>
+<pre class="text"><code>R_polygon = R × [1 + nlobe_t × (1/cos(pi/n) - 1)]
+notch_radius = R_polygon × sin(pi/n) × notch_factor</code></pre>
+<p>At <code>nlobe_t=0</code>, polygon vertices lie on the reference
+circle; at <code>1</code>, polygon sides are tangent to it before the
+axial draft. These geometric definitions avoid ambiguity in the older
+“inscribed/circumscribed” labels. The 2D preview is a reference section;
+inspect generated STL/CAD for the full drafted surface. The new
+base-thickness setting does not anisotropically stretch n-cable
+robots.</p>
+<h2 id="placement-and-dynamics-the-post_gen-object">5. Placement and
+dynamics: the <code>post_gen</code> object</h2>
+<p>These optional fields affect the generated XML. They do not
+rotate/translate fabrication CAD, whose base is at z=0 with +Z towards
+the tip.</p>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Parameter within <code>post_gen</code></th>
+<th>Unit / order</th>
+<th>Meaning</th>
+<th>Example / omission behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>robot_pos</code></td>
+<td>m; <code>[x,y,z]</code></td>
+<td>Root body’s location in the world. Child body offsets stay relative
+to their parents.</td>
+<td>Example <code>[0,0,0.22628]</code>; omitted uses the computed
+geometry pose.</td>
+</tr>
+<tr class="even">
+<td><code>robot_quat</code></td>
+<td>Quaternion; <code>[w,x,y,z]</code></td>
+<td>Rotation of the root/body frame into the world frame. Use a nonzero
+unit quaternion.</td>
+<td>Example <code>[0,0,-1,0]</code> turns local +Z towards world −Z.
+Omitted keeps computed orientation.</td>
+</tr>
+<tr class="odd">
+<td><code>joint_stiffness_base</code></td>
+<td>N·m/rad</td>
+<td>Coefficient K0 of the exponential rotational spring law.</td>
+<td>Example <code>0.2</code>; nonnegative. Omitted uses the selected
+preset.</td>
+</tr>
+<tr class="even">
+<td><code>joint_damping_base</code></td>
+<td>N·m·s/rad</td>
+<td>Coefficient D0 of the exponential rotational damping law.</td>
+<td>Example <code>0.01</code>; nonnegative. Omitted uses the selected
+preset.</td>
+</tr>
+<tr class="odd">
+<td><code>joint_beta</code></td>
+<td>Dimensionless</td>
+<td>Controls the base-to-tip decay of stiffness and damping.</td>
+<td>Example/default <code>1.03</code>; positive. Greater than 1
+decreases gains towards the tip, 1 keeps them constant, below 1
+increases them.</td>
+</tr>
+<tr class="even">
+<td><code>first_joint_stiffness</code></td>
+<td>N·m/rad</td>
+<td>Replaces the stiffness of <code>j_001</code> only.</td>
+<td>Example <code>100</code>; nonnegative. Omitted leaves the
+exponential value.</td>
+</tr>
+<tr class="odd">
+<td><code>first_joint_damping</code></td>
+<td>N·m·s/rad</td>
+<td>Replaces the damping of <code>j_001</code> only.</td>
+<td>Example <code>50</code>; nonnegative. Omitted leaves the exponential
+value.</td>
+</tr>
+<tr class="even">
+<td><code>tip_site_pos</code></td>
+<td>m; <code>[x,y,z]</code></td>
+<td>Optional <code>tip_site</code> position in the last link’s
+<strong>local body frame</strong>.</td>
+<td>Example <code>[0,0,0.005]</code>; omitted means no extra tip
+site.</td>
+</tr>
+<tr class="odd">
+<td><code>target_site_pos</code></td>
+<td>m; <code>[x,y,z]</code></td>
+<td>Optional <code>target</code> site location in the <strong>world
+frame</strong>.</td>
+<td>Example <code>[0.02,0,0.04]</code>; omitted means no target site. A
+site has no collision surface or mass.</td>
+</tr>
+<tr class="even">
+<td><code>timestep</code></td>
+<td>seconds</td>
+<td>Explicit simulation step size, overriding the preset.</td>
+<td>Use <code>0.0001</code> for the present review workflow. Positive
+finite number; omitted uses preset. CLI <code>--timestep</code> takes
+final precedence.</td>
+</tr>
+<tr class="odd">
+<td><code>_comment</code></td>
+<td>Text</td>
+<td>Human-readable note in shipped JSON.</td>
+<td>Ignored by generation. It is not a physics setting.</td>
+</tr>
+</tbody>
+</table>
+<p>For link/joint number i starting at <strong>1</strong>:</p>
+<pre class="text"><code>K_i = K0 / beta^(3*(i-1))
+D_i = D0 / beta^(3*(i-1))</code></pre>
+<p>The first-joint overrides are applied afterwards. Therefore, with a
+protected base, <code>joint_stiffness_base</code> is a scaling
+coefficient rather than the literal stiffness of <code>j_002</code>: the
+latter is <code>K0/beta^3</code>. A large first-joint stiffness is still
+a finite joint, not a welded body. Two-cable joints hinge about local Y;
+the normal n-cable model uses ball joints with rotational
+spring/damping. These coefficients require physical identification when
+matching hardware.</p>
+<p>Changing thickness changes mass, COM and inertia and therefore
+dynamics. The build recomputes explicit link inertias from the
+simulation mesh. Massless collision proxies do not add their own
+inertial properties. Fabrication cable holes and the flexure are not
+part of the simulation’s un-drilled rigid-link inertia model.</p>
+<h2 id="every-build.py-option">6. Every <code>build.py</code>
+option</h2>
+<p>Run <code>uv run python build.py --help</code> for the installed
+version’s syntax.</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Option</th>
+<th>Meaning / default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>--params FILE</code></td>
+<td>Input JSON; default <code>params.json</code>.</td>
+</tr>
+<tr class="even">
+<td><code>--output-dir DIR</code></td>
+<td>Destination for outputs; default current directory.
+<code>build/…</code> is ignored by Git and suitable for review
+builds.</td>
+</tr>
+<tr class="odd">
+<td><code>--no-preview</code></td>
+<td>Suppress the interactive geometry preview and its approval
+prompt.</td>
+</tr>
+<tr class="even">
+<td><code>--noclean</code></td>
+<td>Compatibility flag. Builds always stage fresh outputs; this flag no
+longer changes cleaning behavior.</td>
+</tr>
+<tr class="odd">
+<td><code>--base-thickness-mm MM\|auto</code></td>
+<td>Two-cable base centre thickness; mm or automatic equality with
+width. Overrides both JSON thickness modes.</td>
+</tr>
+<tr class="even">
+<td><code>--hex-section</code></td>
+<td>Select the two-cable six-sided XY outline.</td>
+</tr>
+<tr class="odd">
+<td><code>--hex-edge-ratio E</code></td>
+<td>Override the hex edge/centre thickness ratio. Requires the hex
+section.</td>
+</tr>
+<tr class="even">
+<td><code>--plain</code></td>
+<td>Use an uncut solid of revolution. No flat/n-lobe shape; no
+thickness/hex override. The build uses ball joints in this mode.</td>
+</tr>
+<tr class="odd">
+<td><code>--nlobe</code></td>
+<td>Compatibility selection for normal n_cables-dependent geometry.
+Current default already does this. Mutually exclusive with
+<code>--plain</code>.</td>
+</tr>
+<tr class="even">
+<td><code>--mesh-layout shared\|individual</code></td>
+<td>Default shared: one complete-link STL plus a separate partial-base
+STL when needed; XML uses per-link scale. Individual emits
+<code>link_NNN.stl</code> for each link.</td>
+</tr>
+<tr class="odd">
+<td><code>--collision-mode mesh\|capsule\|compound</code></td>
+<td>Contact representation. Default mesh except the safe preset.
+Compound supports only the <strong>rectangular two-cable</strong>
+section. Hex compound is not implemented.</td>
+</tr>
+<tr class="even">
+<td><code>--collision-corner-radius-ratio R</code></td>
+<td>Compound corner radius / link half-width; default <code>0.04</code>,
+allowed <code>[0.005,0.2]</code>. A particular partial base can require
+a smaller value. Larger radii round off more corners; this does not
+alter CAD geometry.</td>
+</tr>
+<tr class="odd">
+<td><code>--collision-margin-m M</code></td>
+<td>Nonnegative contact margin. Default zero for compound; otherwise the
+selected preset margin. Larger margins can activate contacts
+earlier.</td>
+</tr>
+<tr class="even">
+<td><code>--arena-memory-mib N</code></td>
+<td>Native MuJoCo arena allocation per data instance; integer 1–4096
+MiB. Default 128 for compound, otherwise the compiler default. Capacity
+does not fix timestep instability; allocation must fit available
+RAM.</td>
+</tr>
+<tr class="odd">
+<td><code>--timestep DT</code></td>
+<td>Positive seconds; overrides <code>post_gen.timestep</code> and
+preset.</td>
+</tr>
+<tr class="even">
+<td><code>--safe</code></td>
+<td>Select the safe preset below.</td>
+</tr>
+<tr class="odd">
+<td><code>--fast</code></td>
+<td>Select the fast preset below.</td>
+</tr>
+<tr class="even">
+<td><code>--high</code></td>
+<td>Select the high-fidelity preset below. The three preset flags are
+mutually exclusive. Names do not establish a stability guarantee.</td>
+</tr>
+<tr class="odd">
+<td><code>--cad</code></td>
+<td>Also export whole-robot STEP/STL in millimetres.</td>
+</tr>
+<tr class="even">
+<td><code>--cad-profile fabrication\|simulation</code></td>
+<td>Default fabrication. Simulation exports the rigid-link solids;
+fabrication adds a connecting flexure and optional holes.</td>
+</tr>
+<tr class="odd">
+<td><code>--fuse-cad</code></td>
+<td>Requires <code>--cad</code>; attempts to fuse simulation-profile
+solids. Simulation links meet at ideal hinges and need not form a
+printable connected body. Fabrication already fuses its flexure and
+links.</td>
+</tr>
+<tr class="even">
+<td><code>--neck-width-mm N</code></td>
+<td>Fabrication flexure width; default 1 mm; positive and less than
+actual tip width. For flat links it is the X width of the central
+ligament; for n-cable shapes it is the cylindrical core diameter. The
+check also runs for simulation CAD although no flexure is added
+there.</td>
+</tr>
+<tr class="odd">
+<td><code>--cable-hole-diameter-mm D</code></td>
+<td>Fabrication drilling diameter; default 0 disables holes. Positive
+values cut the canonical cable paths; oversized holes can disconnect the
+part and are rejected.</td>
+</tr>
+<tr class="even">
+<td><code>--flat-thickness-m T</code></td>
+<td>Legacy <strong>fabrication-only</strong> constant centre thickness,
+in metres. Distinct from base thickness. Requires old ratio-mode
+two-cable fabrication; rejected for the new scaled flat workflow and
+simulation CAD.</td>
+</tr>
+<tr class="odd">
+<td><code>--flat-edge-ratio E</code></td>
+<td>Legacy fabrication lens edge/centre ratio; <code>0&lt;E≤1</code>.
+Distinct from <code>--hex-edge-ratio</code>; rejected for the new scaled
+flat workflow and simulation CAD.</td>
+</tr>
+<tr class="even">
+<td><code>--align-geom-frames</code></td>
+<td>Optional legacy export of <code>spirob_aligned.mjb</code> for MuJoCo
+3.3.5. Does not make XML retain aligned mesh geom axes. Not needed for
+thickness or ordinary XML usage.</td>
+</tr>
+<tr class="odd">
+<td><code>--help</code></td>
+<td>Print options and exit.</td>
+</tr>
+</tbody>
+</table>
+<p>Use <code>--base-thickness-mm</code> to choose one physical dimension
+consistently for simulation and CAD. Do not use the older
+fabrication-only thickness option for that purpose. Old ratio-mode
+fabrication retains its constant-thickness lens behavior; new
+absolute/auto mode uses the selected rectangular/hex section and scales
+its thickness along the chain. Fabrication then adds its flexure and any
+requested holes.</p>
+<h3 id="physics-preset-values">Physics preset values</h3>
+<p>These are code defaults <strong>before</strong> explicit JSON/CLI
+overrides. The shipped <code>post_gen</code> gains override preset
+gains. <code>--collision-mode</code> can override the preset’s contact
+shape, and <code>--timestep</code> overrides the preset’s timestep.</p>
+<table>
+<thead>
+<tr class="header">
+<th>Setting</th>
+<th style="text-align: right;">Default</th>
+<th style="text-align: right;"><code>--safe</code></th>
+<th style="text-align: right;"><code>--fast</code></th>
+<th style="text-align: right;"><code>--high</code></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Timestep (s)</td>
+<td style="text-align: right;">0.002</td>
+<td style="text-align: right;">0.001</td>
+<td style="text-align: right;">0.005</td>
+<td style="text-align: right;">0.0005</td>
+</tr>
+<tr class="even">
+<td>Integrator</td>
+<td style="text-align: right;">implicit</td>
+<td style="text-align: right;">implicit</td>
+<td style="text-align: right;">implicit</td>
+<td style="text-align: right;">RK4</td>
+</tr>
+<tr class="odd">
+<td>Contact shape</td>
+<td style="text-align: right;">mesh</td>
+<td style="text-align: right;">capsule</td>
+<td style="text-align: right;">mesh</td>
+<td style="text-align: right;">mesh</td>
+</tr>
+<tr class="even">
+<td>K0 (N·m/rad)</td>
+<td style="text-align: right;">0.2</td>
+<td style="text-align: right;">0.2</td>
+<td style="text-align: right;">0.01</td>
+<td style="text-align: right;">0.1</td>
+</tr>
+<tr class="odd">
+<td>D0 (N·m·s/rad)</td>
+<td style="text-align: right;">0.01</td>
+<td style="text-align: right;">0.2</td>
+<td style="text-align: right;">0.001</td>
+<td style="text-align: right;">0.02</td>
+</tr>
+<tr class="even">
+<td>Hinge angular range</td>
+<td style="text-align: right;">±180°</td>
+<td style="text-align: right;">±15°</td>
+<td style="text-align: right;">±180°</td>
+<td style="text-align: right;">±180°</td>
+</tr>
+<tr class="odd">
+<td>Contact margin (m)</td>
+<td style="text-align: right;">0.001</td>
+<td style="text-align: right;">0.0002</td>
+<td style="text-align: right;">0.002</td>
+<td style="text-align: right;">0.0005</td>
+</tr>
+<tr class="even">
+<td>Actuator control range</td>
+<td style="text-align: right;">[−10,0]</td>
+<td style="text-align: right;">[−5,5]</td>
+<td style="text-align: right;">[−10,10]</td>
+<td style="text-align: right;">[−5,5]</td>
+</tr>
+<tr class="odd">
+<td>Rendered tendon width (m)</td>
+<td style="text-align: right;">0.0006</td>
+<td style="text-align: right;">0.0004</td>
+<td style="text-align: right;">0.0008</td>
+<td style="text-align: right;">0.0005</td>
+</tr>
+</tbody>
+</table>
+<p>The hinge range applies to hinge models; these presets do not add a
+ball-joint angular limit. Tendon display width is visual, not cable-hole
+diameter. Motors use tendon force actuation with gear 1 in this
+generator; controls are force commands in N under that mapping, not
+desired tendon lengths. Negative values in the normal [−10,0] range
+provide pulling force. Positive control is mathematically permitted by
+some presets; it does not make a real cable able to push. A sign
+convention is not a general model of real motor/transmission limits.</p>
+<p>Other current <code>MJCFConfig</code> defaults are density 1200
+kg/m³, gravity <code>[0,0,-9.81]</code> m/s², friction
+<code>[0.6,0.01,0.001]</code> (sliding, torsional, rolling), and site
+size 0.001 m. They are Python configuration values, <strong>not
+implemented JSON parameter keys</strong>. Adding <code>density</code>,
+<code>gravity</code>, <code>friction</code> or a custom control range to
+params.json does not configure them. Use the Python writer’s
+configuration or deliberately edit XML and verify the result. Editing
+geom density alone does not recompute already explicit body inertias.
+Torsional and rolling friction entries are effective only with
+corresponding contact dimensions; the normal generated contact dimension
+is 3.</p>
+<h2 id="desktop-gui">7. Desktop GUI</h2>
+<p>The desktop requires Tk and a graphical display. On Ubuntu the OS Tk
+package is <code>python3-tk</code>; the selected Python installation
+must also include its Tkinter module. The command-line build and PNG
+inspection do not require a desktop.</p>
+<p>The GUI exposes the core dimensions, cable count, inward shift,
+n-lobe t, notch factor, base centre thickness, hex edge ratio and
+flat-section selection. Thickness/hex controls are disabled for n≥3;
+n-lobe controls are disabled for two cables. With <code>auto</code>, the
+preview reports the actual base and tip thicknesses. When loading an old
+ratio-only file, its actual base thickness is displayed numerically.
+Saving that GUI configuration converts it to absolute-base mode.
+Thereafter geometry changes keep that numeric thickness fixed; enter
+<code>auto</code> if you want thickness to follow width instead.</p>
+<p>The GUI’s geometry preview shows the two-cable XY outline and its
+width/centre thickness in mm. The left pane shows the axial profile.
+<strong>Preview exported CAD</strong> opens the last exported
+fabrication/simulation geometry, including holes if present. Changing
+fields does not retroactively update an already-built XML; save and
+rebuild it.</p>
+<p>The other GUI controls map directly to CLI settings: output folder,
+CAD profile, flexure width, cable-hole diameter, array count, and array
+radius. Timestep, post_gen gains/pose, terminal-unit policy, contact
+mode and arena allocation are configured through JSON/CLI, not
+independent GUI widgets. The frame-inspection button opens its existing
+optional alignment workflow; it is not required to inspect physical
+dimensions.</p>
+<h2 id="output-files-and-audit-procedure">8. Output files and audit
+procedure</h2>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Output</th>
+<th>What it contains / unit</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>build_params.json</code></td>
+<td>Input geometry settings plus selected CLI section/thickness/timestep
+overrides. Auto remains <code>null</code>, so future geometry edits
+retain auto behavior.</td>
+</tr>
+<tr class="even">
+<td><code>section_dimensions.json</code></td>
+<td>Two-cable width, centre thickness and edge thickness for every link;
+explicit base/tip summaries and resolved ratio. <strong>Metres</strong>.
+Absent for n-lobe/plain models.</td>
+</tr>
+<tr class="odd">
+<td><code>Geom_Data_CSV/Spirob_geom_data.csv</code></td>
+<td>Canonical link profiles and cable-site input geometry, metres.
+Transverse thickness is supplied by params, not extra CSV columns.</td>
+</tr>
+<tr class="even">
+<td><code>meshes/link_template.stl</code></td>
+<td>Simulation complete-link template, metres. XML applies each link’s
+scale.</td>
+</tr>
+<tr class="odd">
+<td><code>meshes/link_001.stl</code></td>
+<td>Separate partial-base STL when present, metres.</td>
+</tr>
+<tr class="even">
+<td><code>spirob_physics_model.xml</code></td>
+<td>Generated and compiled standalone MJCF with explicit body inertias.
+Keep its referenced meshes with it.</td>
+</tr>
+<tr class="odd">
+<td><code>cad/spirob.step</code> and <code>cad/spirob.stl</code></td>
+<td>Whole-robot CAD export; numeric dimensions <strong>mm</strong>. STL
+has no inherent unit declaration, so import as mm.</td>
+</tr>
+<tr class="even">
+<td><code>cad/spirob_cad_report.json</code></td>
+<td>CAD options, units, bounds, topology, volume and hashes.</td>
+</tr>
+<tr class="odd">
+<td><code>spirob_aligned.mjb</code></td>
+<td>Optional version-specific compiled model; generated only with the
+alignment option.</td>
+</tr>
+</tbody>
+</table>
+<p>The saved parameter file does not capture every CLI choice, such as
+collision mode or CAD profile. Keep the build command with your
+experiment records. A build uses temporary staging, verifies the meshes,
+compiles MJCF and publishes after success. Failure retains previous
+published outputs. Rebuilding without <code>--cad</code> leaves an
+existing CAD folder in place; it may describe an earlier build. Rebuild
+CAD explicitly before treating it as current.</p>
+<p>To check dimensions and inertia:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> run python tools/inspect_section.py <span class="dt">\</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">--mjcf</span> build/two-cable-square/spirob_physics_model.xml <span class="dt">\</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">--links</span> link_001 link_002 link_021 <span class="dt">\</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">--out</span> build/two-cable-square/sections.png</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> run python tools/audit_inertia.py <span class="dt">\</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>  <span class="at">--mjcf</span> build/two-cable-square/spirob_physics_model.xml <span class="dt">\</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>  <span class="at">--params</span> build/two-cable-square/build_params.json <span class="dt">\</span></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>  <span class="at">--json</span> build/two-cable-square/inertia.json</span></code></pre></div>
+<p>The audit compares tensors in axes parallel to each link body, about
+the COM. Its CAD reference assumes a uniform un-drilled simulation solid
+at the chosen density. It is not a measurement of a printed part. Use
+the matching saved parameters: auditing a changed-thickness XML against
+an older parameter file will compare different shapes.</p>
+<h2 id="supporting-command-line-tools">9. Supporting command-line
+tools</h2>
+<h3 id="standalone-generation-and-preview">Standalone generation and
+preview</h3>
+<p>Normally use <code>build.py</code>, which passes matching parameters
+between stages.</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Tool</th>
+<th>Additional options and meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>spirob_csv_generator.py</code></td>
+<td><code>--params</code> input; <code>--out</code> output CSV;
+<code>--yes</code> skip confirmation. It does not itself generate a
+transverse STL section.</td>
+</tr>
+<tr class="even">
+<td><code>csv2geom_nlobe.py</code></td>
+<td><code>--in</code> CSV; <code>--outdir</code> meshes;
+<code>--params</code> matching geometry; <code>--axis</code> revolution
+axis (default y workplane convention); <code>--angle</code> revolution
+sweep degrees (default 360); <code>--plain</code>,
+<code>--mesh-layout</code>, <code>--hex-section</code>,
+<code>--hex-edge-ratio</code>, <code>--base-thickness-mm</code> as
+above. Partial revolution options need a separately reviewed model.</td>
+</tr>
+<tr class="odd">
+<td><code>csv2xml.py</code></td>
+<td><code>--in</code>, <code>--out</code>, <code>--meshdir</code>,
+<code>--params</code>; section/collision/preset/timestep/arena flags as
+above; <code>--hinge</code> selects hinge joints; <code>--digits</code>
+zero-padding (default 3); <code>--tendon-shift</code> in m;
+<code>--phi-deg</code> full taper in degrees. Supply matching CSV/STLs.
+Section/thickness flags do not regenerate meshes at this stage.</td>
+</tr>
+<tr class="even">
+<td><code>cad_export.py</code></td>
+<td><code>--in</code> CSV; <code>--params</code>; <code>--outdir</code>
+(default cad); <code>--prefix</code> filenames (default spirob);
+<code>--profile</code>, <code>--fuse</code>, <code>--plain</code>,
+section/thickness flags and manufacturing dimensions as above. Here
+<code>--profile</code> corresponds to build’s
+<code>--cad-profile</code>.</td>
+</tr>
+<tr class="odd">
+<td><code>preview.py</code></td>
+<td><code>--params</code>; <code>--out</code> PNG; <code>--nlobe</code>
+also shows the n-lobe or flat-section preview; <code>--proceed</code>
+skips its yes/no prompt.</td>
+</tr>
+<tr class="even">
+<td><code>tools/geometry_audit.py</code></td>
+<td><code>--params</code>; <code>--out</code> JSON;
+<code>--policy</code> overrides terminal-unit policy;
+<code>--compare-policies</code> compares both length policies.</td>
+</tr>
+</tbody>
+</table>
+<p><code>csv2xml.py</code> has historical standalone defaults
+<code>--phi-deg 5.7</code> and <code>--tendon-shift 0.0015</code>; its
+<code>--params</code> option does not replace those CLI geometry values.
+<code>build.py</code> passes the actual values from JSON. Prefer the
+build driver to avoid a mismatched standalone command. Changing
+<code>--digits</code> can also change the external naming contract; keep
+3 for the existing mjlab consumer.</p>
+<h3 id="inspection-and-joint-gains">Inspection and joint gains</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Tool</th>
+<th>Parameters</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>tools/inspect_section.py</code></td>
+<td><code>--mjcf</code> XML; <code>--links</code> body names (default
+base, first complete, tip); <code>--out</code> PNG (default
+cross_sections.png); <code>--json</code> optional coordinates/report;
+<code>--show</code> plot window. Views are actual compiled-mesh
+projections in body axes, not slices at a chosen Z.</td>
+</tr>
+<tr class="even">
+<td><code>tools/audit_inertia.py</code></td>
+<td><code>--mjcf</code>; <code>--params</code> enables CAD comparison;
+<code>--density</code> kg/m³ (default 1200); <code>--links</code>;
+<code>--plain</code>; matching section/thickness override flags;
+<code>--reference-mjcf</code> an older XML; <code>--json</code> report.
+This reads but does not modify inertia.</td>
+</tr>
+<tr class="odd">
+<td><code>tools/inspect_collision.py</code></td>
+<td><code>--mjcf</code>; <code>--view</code> frozen CAD/proxy viewer or
+<code>--stress</code> bounded stepping; <code>--controls</code> one
+value per actuator; <code>--seconds</code> duration (default 10);
+<code>--ramp-seconds</code> linear ramp (default 2, between 0 and
+duration); <code>--json</code> report. Stress commands must lie within
+that XML’s control limits.</td>
+</tr>
+<tr class="even">
+<td><code>tools/set_joint_gains.py</code></td>
+<td><code>--mjcf</code> source; <code>--out</code> different
+destination; <code>--stiffness</code>, <code>--damping</code>,
+<code>--beta</code> required; <code>--anchor generator</code> keeps the
+original exponent indexing, <code>first-flexible</code> applies the
+supplied values to the first unprotected joint;
+<code>--exclude-joints</code> protects additional joints;
+<code>--arena-memory-mib</code> optional; <code>--json</code> report;
+<code>--overwrite</code> permits an existing output. <code>j_001</code>
+is always protected.</td>
+</tr>
+<tr class="odd">
+<td><code>tools/inspect_model.py</code></td>
+<td><code>--mjcf</code> (alias <code>--model</code>) XML/MJB;
+<code>--view</code>; <code>--frames geom\|body</code>; optional
+<code>--align-geom-frames</code>; <code>--save-mjb</code> compiled
+output; <code>--json</code> prints a frame report. This is frame
+inspection, not thickness tuning.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="fabrication-splitting-and-robot-arrays">Fabrication splitting
+and robot arrays</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Tool / parameter</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>fabrication/part_splitter.py INPUT</code></td>
+<td>Split STEP/STP or STL. Cuts create separate pieces, not automatic
+interlocking joints or fasteners.</td>
+</tr>
+<tr class="even">
+<td><code>--axis x\|y\|z</code></td>
+<td>Direction along which to split; default z.</td>
+</tr>
+<tr class="odd">
+<td><code>--max-span-mm</code></td>
+<td>Maximum span per part; produces evenly divided pieces.</td>
+</tr>
+<tr class="even">
+<td><code>--cut-positions-mm</code></td>
+<td>Explicit comma-separated cut coordinates along that axis, in the
+imported model frame. Do not combine with max-span mode.</td>
+</tr>
+<tr class="odd">
+<td><code>--build-volume-mm X,Y,Z</code></td>
+<td>Printer envelope used for fit checks, with candidate axis
+permutations. It does not establish print orientation/support
+quality.</td>
+</tr>
+<tr class="even">
+<td><code>--file-units m\|mm</code></td>
+<td>Input numeric units; default mm for fabricated outputs. Use m for
+simulation STLs.</td>
+</tr>
+<tr class="odd">
+<td><code>--out-dir</code></td>
+<td>Destination, otherwise derived from the input filename.</td>
+</tr>
+<tr class="even">
+<td><code>tools/multi_array.py --in FILE</code></td>
+<td>Source single-robot XML; default spirob_physics_model.xml.</td>
+</tr>
+<tr class="odd">
+<td><code>--count</code></td>
+<td>Number of robots; integer at least 1, default 6.</td>
+</tr>
+<tr class="even">
+<td><code>--radius-m</code></td>
+<td>Circle radius for robot base placement, metres; default 0.12.</td>
+</tr>
+<tr class="odd">
+<td><code>--base-rot-deg</code></td>
+<td>Angular offset of the whole array about Z, degrees; default 0.</td>
+</tr>
+<tr class="even">
+<td><code>--tilt-deg</code></td>
+<td>Robot tilt about each base’s local radial axis, degrees; default
+0.</td>
+</tr>
+<tr class="odd">
+<td><code>--out</code></td>
+<td>Array XML destination; default spirob_array.xml next to source.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="common-sources-of-confusion">10. Common sources of
+confusion</h2>
+<ul>
+<li><strong>Thickness versus width:</strong> the new dimension changes Y
+for two-cable links; <code>d_tip</code>, length, taper and segment angle
+determine canonical X widths.</li>
+<li><strong>Base versus tip:</strong> the input refers to actual
+<code>link_001</code>, including a partial base. Tip thickness is a
+derived value, not an independent control.</li>
+<li><strong>Hex centre versus edge:</strong> centre thickness is
+ridge-to-ridge. Edge thickness is smaller by
+<code>hex_edge_ratio</code>. Setting thickness=width does not remove the
+hexagonal corners.</li>
+<li><strong>Geometry versus contact approximation:</strong> mesh
+contacts use convex hulls; capsules are an approximation; existing
+compound proxies fit rectangular two-cable links only. Their thickness
+follows the new base setting. Hex compound refitting and primitive
+reduction remain pending.</li>
+<li><strong>Geometry versus dynamics:</strong> a thicker link has
+different inertia. The gain coefficients are not automatically
+identified or retuned by a CAD change.</li>
+<li><strong>Timestep versus arena:</strong> a smaller timestep changes
+numerical integration; more arena memory provides room for
+contacts/constraints. Neither substitutes for the other.</li>
+<li><strong>SI versus printing:</strong> JSON lengths and simulation
+STLs use metres; CLI thickness with the <code>-mm</code> suffix, CAD
+exports and printer dimensions use mm.</li>
+</ul>
+<p>For the underlying MJCF semantics, see the official <a href="https://mujoco.readthedocs.io/en/3.3.5/XMLreference.html">MuJoCo
+XML reference</a> and <a href="https://mujoco.readthedocs.io/en/3.3.5/XMLreference.html#asset-mesh">mesh/contact
+documentation</a>. Repository-specific behavior in this manual follows
+the current source code. The existing detailed geometry, collision and
+dynamics documents supplement it.</p>
+<h2 id="updating-this-manual">11. Updating this manual</h2>
+<p>The Markdown file is the editable source. The HTML copy is standalone
+and opens locally in a browser; it needs no internet connection or
+Python server. If Pandoc is installed, regenerate it with:</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pandoc</span> docs/PARAMETER_MANUAL.md <span class="at">--standalone</span> <span class="at">--toc</span> <span class="at">--toc-depth</span><span class="op">=</span>2 <span class="dt">\</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">--metadata</span> pagetitle=<span class="st">&quot;SpiRob generator parameter manual&quot;</span> <span class="dt">\</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">--css</span><span class="op">=</span>docs/parameter-manual.css <span class="at">--embed-resources</span> <span class="dt">\</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">-o</span> docs/PARAMETER_MANUAL.html</span></code></pre></div>
+<p>Pandoc is only a documentation-build tool; it is not required to
+generate or simulate SpiRob models.</p>
+</body>
+</html>

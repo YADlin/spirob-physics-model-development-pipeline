@@ -9,7 +9,6 @@
   "show_preview": true,
   "notch_factor": 0.25,
   "nlobe_t": 0.5,
-  "flat_thickness_ratio": 0.3,
   "post_gen": {
     "_comment": "All post_gen fields are optional. Omit any to keep the pipeline default.",
     "robot_pos": [

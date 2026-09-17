@@ -18,7 +18,8 @@ can create many contacts between primitives on different links. Increasing
 arena memory addresses allocation capacity; it does not change the contact
 geometry or establish stable dynamics.
 
-A reproduced test used the supplied two-cable example, unchanged gains and
+The historical tests below used the two-cable example with thickness/width
+ratio 0.3 (before the new thickness=width defaults), unchanged gains and
 inertias, a 2 ms timestep, and controls `[-10, 0]` from the initial pose:
 
 | Run | Result |
