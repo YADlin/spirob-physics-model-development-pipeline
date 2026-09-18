@@ -115,7 +115,7 @@ def main():
             dest = Path(args.json); dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
         for link in report['links']:
-            print(f"{link['body']}: {link['end_on_sides']} end-on sides; area {link['end_on_area_mm2']:.6g} mm^2")
+            print(f"{link['body']}: {link['end_on_sides']} projected boundary vertices; area {link['end_on_area_mm2']:.6g} mm^2")
         print(f'Saved {args.out}; timestep {report["timestep_s"]:g} s')
     except (ValueError, OSError) as exc:
         parser.exit(1, f'Inspection failed: {exc}\n')

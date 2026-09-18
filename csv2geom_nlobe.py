@@ -4,10 +4,10 @@ csv2geom_nlobe.py  —  CSV → STL meshes with n-lobe or flat cross-section,
 
 Cross-section rules
 -------------------
-n_cables = 1 or 2  →  Flat tapered extrusion (lofted rectangular slab).
-                       Each element has a bottom and top rectangle whose
-                       widths follow the outer radius taper, so consecutive
-                       elements mate seamlessly.
+n_cables = 2       →  Rectangular or hex XY section, with continuous axial
+                       thickness taper. The canonical XZ slit profile is
+                       preserved. Legacy constant-thickness links are
+                       available through thickness_profile="stepped".
                        Joints in the XML should be hinge (build.py handles
                        this automatically when n_cables <= 2).
 
@@ -22,8 +22,10 @@ params.json fields used
   n_cables              : drives the cross-section type
   phi_deg               : taper angle — used for loft draft on n-lobe cutter
   notch_factor          : notch radius fraction     (n >= 3)
-  flat_thickness_ratio  : thickness / width ratio for flat extrusion (n <= 2)
-                          default 0.3
+  base_thickness_m      : full thickness at the base mounting plane, or null
+                          to set base thickness equal to base width (n = 2)
+  thickness_profile     : linear (default), or legacy stepped (n = 2)
+  flat_thickness_ratio  : legacy alternative base thickness / width ratio
 """
 
 import argparse
@@ -221,7 +223,7 @@ def revolve_profile(profile, angle=360, axis="y"):
 #  Flat tapered extrusion  (n_cables = 1 or 2)
 # ══════════════════════════════════════════════════════════════════════════════
 
-def build_flat_element(row, thickness_ratio=0.3, hex_edge_ratio=None):
+def build_flat_element(row, thickness_ratio=0.3, hex_edge_ratio=None, endpoint_thicknesses_m=None):
     """
     Build the flat element by extruding the actual trapezoidal quad profile
     in ±Y (perpendicular to the XZ plane the profile lives in).
@@ -238,7 +240,16 @@ def build_flat_element(row, thickness_ratio=0.3, hex_edge_ratio=None):
     size. The legacy both=True call extrudes R*ratio in each Y direction.
     With hex_edge_ratio, the XY section has two centre ridges and flat sides.
     All coordinates shifted so joint_s1 is at z=0.
+    With endpoint_thicknesses_m, use a ruled taper between those full centre
+    thicknesses instead of a constant extrusion; retain the XZ slit footprint.
     """
+    if endpoint_thicknesses_m is not None:
+        from spirob.sections import tapered_solid_mm
+        origin_z = float(row['joint_s1_z'])
+        points = [(x, y, z-origin_z) for x, y, z in extract_points(row)]
+        t0, t1 = endpoint_thicknesses_m
+        return cq.Workplane(obj=tapered_solid_mm(points, t0*1000, t1*1000,
+                            1. if hex_edge_ratio is None else hex_edge_ratio).scale(.001))
     if hex_edge_ratio is not None:
         from spirob.sections import lens_solid_mm
         if not math.isfinite(hex_edge_ratio) or not 0 < hex_edge_ratio < 1:
@@ -449,6 +460,10 @@ def process_csv(csv_file, outdir="meshes", revolve_axis="y", angle=360,
     if n_cables == 2 and not plain and params is not None:
         from spirob.sections import resolve_flat_thickness_ratio
         flat_thickness_ratio = resolve_flat_thickness_ratio(section_params, geometry)
+    law = None
+    if n_cables == 2 and not plain and params is not None and section_params.get('thickness_profile', 'linear') == 'linear':
+        from spirob.sections import linear_thickness_law, thickness_at_z
+        law = linear_thickness_law(section_params, geometry)
     draft_angle_deg = phi_deg / 2.0
     flat_mode       = (not plain) and (n_cables <= 2)
 
@@ -509,7 +524,9 @@ def process_csv(csv_file, outdir="meshes", revolve_axis="y", angle=360,
         try:
             if flat_mode:
                 # ── Flat extrusion of actual trapezoidal quad profile ─────
-                solid = build_flat_element(unit.row, flat_thickness_ratio, hex_edge_ratio=hex_edge)
+                endpoints = tuple(thickness_at_z(law, unit.profile_xyz[j][2]) for j in (0,1)) if law else None
+                solid = build_flat_element(unit.row, flat_thickness_ratio, hex_edge_ratio=hex_edge,
+                                           endpoint_thicknesses_m=endpoints)
 
             else:
                 # ── Revolved cylinder (+ optional n-lobe cut) ─────────────
@@ -533,7 +550,26 @@ def process_csv(csv_file, outdir="meshes", revolve_axis="y", angle=360,
                     )
 
             output_path = os.path.join(outdir, filename)
-            cq.exporters.export(solid, output_path, tolerance=1e-4)
+            # Tapered hex faces are gently curved; resolve their STL sufficiently
+            # finely for CAD-versus-compiled mass and inertia agreement.
+            if law and hex_edge:
+                # Mesh in millimetres to stay above OpenCascade's absolute
+                # tolerance floor, then convert only STL vertex coordinates.
+                import struct
+                import numpy as np
+                solid.val().scale(1000).exportStl(output_path, tolerance=1e-5,
+                                                angularTolerance=.03, relative=False)
+                with open(output_path, 'rb') as stream:
+                    header = stream.read(84)
+                    dtype = np.dtype([('normal','<f4',(3,)),('vertices','<f4',(3,3)),('attribute','<u2')])
+                    triangles = np.frombuffer(stream.read(),dtype=dtype).copy()
+                if len(triangles) != struct.unpack_from('<I',header,80)[0]:
+                    raise ValueError('Unexpected STL encoding from CAD exporter')
+                triangles['vertices'] *= .001
+                with open(output_path,'wb') as stream:
+                    stream.write(header); stream.write(triangles.tobytes())
+            else:
+                cq.exporters.export(solid, output_path, tolerance=1e-4)
             print(f"  ✓ {output_path}")
 
         except Exception as e:
@@ -571,7 +607,7 @@ if __name__ == "__main__":
 
     with open(args.params, encoding="utf-8") as f:
         params = resolve_section_params(json.load(f), hex_section=args.hex_section,
-                                        hex_edge_ratio=args.hex_edge_ratio, base_thickness_mm=args.base_thickness_mm, plain=args.plain)
+                                        hex_edge_ratio=args.hex_edge_ratio, base_thickness_mm=args.base_thickness_mm, thickness_profile=args.thickness_profile, plain=args.plain)
 
     # n_cables and phi_deg are deliberately NOT passed: they come from the
     # canonical model, so the CLI exercises the same path every other caller

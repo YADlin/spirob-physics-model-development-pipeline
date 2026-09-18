@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def two_params():
-    return json.loads((ROOT/'examples/params-two-cable.json').read_text())
+    return dict(json.loads((ROOT/'examples/params-two-cable.json').read_text()), thickness_profile='stepped')
 
 
 def test_default_width_equals_thickness_and_explicit_base_stays_fixed():
@@ -73,6 +73,7 @@ def test_gui_roundtrip_and_switch_to_n_cables():
 def absolute_build(request, tmp_path_factory):
     folder=tmp_path_factory.mktemp('absolute-'+request.param)
     args=[sys.executable,str(ROOT/'build.py'),'--params',str(ROOT/'examples/params-two-cable.json'),
+          '--thickness-profile','stepped',
           '--base-thickness-mm','20','--timestep','.0001','--no-preview','--output-dir',str(folder)]
     args += ['--hex-section','--collision-mode','mesh'] if request.param == 'hex' else ['--collision-mode','compound']
     run=subprocess.run(args,capture_output=True,text=True)

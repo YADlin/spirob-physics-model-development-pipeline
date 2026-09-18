@@ -1,5 +1,9 @@
 # Optional six-sided two-cable section
 
+> **Update:** default two-cable solids now taper continuously along Z. See
+> [LINEAR_THICKNESS.md](LINEAR_THICKNESS.md). The older constant-per-link
+> descriptions below apply to `--thickness-profile stepped`.
+
 The photographed outline is transverse to the robot's longitudinal Z axis.
 The new `--hex-section` makes that **XY** outline six-sided. It does not merely
 change the existing sloping XZ outline. This is an independent construction

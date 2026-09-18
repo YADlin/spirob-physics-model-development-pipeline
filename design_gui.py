@@ -40,7 +40,7 @@ def collect_params(original, values):
                 p.pop('hex_edge_ratio', None)
             p = resolve_section_params(p, base_thickness_mm=values.get('base_thickness_mm'))
         else:
-            for key in ('base_thickness_m', 'flat_section', 'hex_edge_ratio'):
+            for key in ('base_thickness_m', 'flat_section', 'hex_edge_ratio', 'thickness_profile'):
                 p.pop(key, None)
     validate_params(p); from_params(p)
     return p

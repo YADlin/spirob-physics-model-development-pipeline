@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def compound(tmp_path_factory):
     folder = tmp_path_factory.mktemp('dynamics-tools')
     p = subprocess.run([sys.executable, str(ROOT/'build.py'), '--params', str(ROOT/'examples/params-two-cable.json'),
-                        '--no-preview', '--collision-mode', 'compound', '--output-dir', str(folder)],
+                        '--no-preview', '--thickness-profile', 'stepped', '--collision-mode', 'compound', '--output-dir', str(folder)],
                        capture_output=True, text=True)
     assert p.returncode == 0, p.stdout+p.stderr
     return folder/'spirob_physics_model.xml'
@@ -72,7 +72,7 @@ def test_cad_inertia_mm_to_si_and_parallel_axis():
 
 def test_two_cable_cad_reference_and_read_only(compound):
     content = compound.read_bytes()
-    params = json.loads((ROOT/'examples/params-two-cable.json').read_text())
+    params = json.loads((compound.parent/'build_params.json').read_text())
     report = audit(compound, params=params, links=['link_001', 'link_002', 'link_021'])
     assert compound.read_bytes() == content
     for link in report['links']:

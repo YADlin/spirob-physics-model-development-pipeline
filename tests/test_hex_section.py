@@ -35,7 +35,7 @@ def test_hex_is_explicit_two_cable_only():
 def hex_build(tmp_path_factory):
     folder = tmp_path_factory.mktemp('hex')
     result = subprocess.run([sys.executable, str(ROOT/'build.py'), '--params', str(ROOT/'examples/params-two-cable.json'),
-                             '--hex-section', '--timestep', '.0001', '--collision-mode', 'mesh',
+                             '--hex-section', '--thickness-profile', 'stepped', '--timestep', '.0001', '--collision-mode', 'mesh',
                              '--collision-margin-m', '0', '--no-preview', '--cad', '--cad-profile', 'simulation',
                              '--output-dir', str(folder)], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout+result.stderr
@@ -89,7 +89,7 @@ def test_hex_inertias_match_exact_cad_and_scale(hex_build):
 def test_legacy_shape_and_interfaces_unchanged(hex_build, tmp_path):
     folder, new = hex_build
     result = subprocess.run([sys.executable, str(ROOT/'build.py'), '--params', str(ROOT/'examples/params-two-cable.json'),
-                             '--no-preview', '--output-dir', str(tmp_path)], capture_output=True, text=True)
+                             '--thickness-profile', 'stepped', '--no-preview', '--output-dir', str(tmp_path)], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout+result.stderr
     old = mujoco.MjModel.from_xml_path(str(tmp_path/'spirob_physics_model.xml'))
     for bid in range(1, old.nbody):

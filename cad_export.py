@@ -43,9 +43,12 @@ def _simulation_element_mm(unit, params, plain=False):
     from csv2geom_nlobe import build_flat_element, make_profile_from_points, revolve_profile, add_nlobe_cut
     n = params['n_cables']
     if n == 2 and not plain:
-        from spirob.sections import resolve_flat_thickness_ratio
+        from spirob.sections import resolve_flat_thickness_ratio, linear_thickness_law, thickness_at_z
+        law = linear_thickness_law(params) if params.get('thickness_profile', 'linear') == 'linear' else None
+        endpoints = tuple(thickness_at_z(law, unit.profile_xyz[j][2]) for j in (0,1)) if law else None
         shape = build_flat_element(unit.row, resolve_flat_thickness_ratio(params),
-                                   hex_edge_ratio=params.get('hex_edge_ratio') if params.get('flat_section') == 'hex' else None)
+                                   hex_edge_ratio=params.get('hex_edge_ratio') if params.get('flat_section') == 'hex' else None,
+                                   endpoint_thicknesses_m=endpoints)
         shape = shape.translate((0, 0, unit.origin_m[2]))
     else:
         shape = revolve_profile(make_profile_from_points(unit.profile_xyz))
@@ -68,9 +71,11 @@ def build_cad(units, geometry, params, *, profile='fabrication', plain=False,
     params = resolve_section_params(params, plain=plain)
     hex_section = params.get('flat_section') == 'hex'
     n = geometry.inputs.n_cables
-    from spirob.sections import resolve_flat_thickness_ratio
+    from spirob.sections import resolve_flat_thickness_ratio, linear_thickness_law, thickness_at_z
     ratio = resolve_flat_thickness_ratio(params, geometry) if n == 2 and not plain else .3
-    scaled_flat = n == 2 and not plain and (hex_section or 'base_thickness_m' in params or 'flat_thickness_ratio' not in params)
+    linear = n == 2 and not plain and params.get('thickness_profile', 'linear') == 'linear'
+    law = linear_thickness_law(params, geometry) if linear else None
+    scaled_flat = n == 2 and not plain and (linear or hex_section or 'base_thickness_m' in params or 'flat_thickness_ratio' not in params)
     if scaled_flat and (flat_thickness_m is not None or flat_edge_ratio is not None):
         raise ValueError('Use --base-thickness-mm and --hex-edge-ratio with this section, not legacy manufacturing-only flat overrides')
     if profile not in ('fabrication', 'simulation'):
@@ -109,7 +114,7 @@ def build_cad(units, geometry, params, *, profile='fabrication', plain=False,
             nodes.append((units[-1].profile_xyz[1][2]*1000, units[-1].outer_radius_m*1000))
             wires = []
             for z, radius in nodes:
-                h = radius*ratio
+                h = thickness_at_z(law,z/1000)*500 if law else radius*ratio
                 he = h*(1-(1-params.get('hex_edge_ratio', 1.))*neck/(2*radius))
                 xy = [(-neck/2, -he), (0, -h), (neck/2, -he),
                       (neck/2, he), (0, h), (-neck/2, he)]
@@ -149,6 +154,7 @@ def build_cad(units, geometry, params, *, profile='fabrication', plain=False,
     section_name = ('plain' if plain else f'{n}-lobe' if n >= 3 else 'hex' if hex_section
                     else 'fabrication_lens' if profile == 'fabrication' and not scaled_flat else 'rectangular')
     return combined, {'profile': profile, 'flat_section': section_name,
+                      'thickness_profile': params.get('thickness_profile','linear') if n == 2 and not plain else None,
                       'hex_edge_ratio': params.get('hex_edge_ratio') if hex_section else None,
                       'thickness_scales_with_link': (profile == 'simulation' or scaled_flat) if n == 2 and not plain else None, 'solid_count': solid_count, 'valid': True,
                       'neck_width_mm': neck if profile == 'fabrication' else None,
@@ -235,7 +241,7 @@ def main():
     section_arguments(p)
     a=p.parse_args()
     params = resolve_section_params(json.loads(Path(a.params).read_text(encoding='utf-8')),
-                                    hex_section=a.hex_section, hex_edge_ratio=a.hex_edge_ratio, base_thickness_mm=a.base_thickness_mm, plain=a.plain)
+                                    hex_section=a.hex_section, hex_edge_ratio=a.hex_edge_ratio, base_thickness_mm=a.base_thickness_mm, thickness_profile=a.thickness_profile, plain=a.plain)
     process_cad(a.input,params,outdir=a.outdir,
                 prefix=a.prefix,fuse=a.fuse,plain=a.plain,profile=a.profile,
                 flat_thickness_m=a.flat_thickness_m,flat_edge_ratio=a.flat_edge_ratio,

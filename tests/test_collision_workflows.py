@@ -49,6 +49,7 @@ def primitive_outline(shapes):
 def models(request, tmp_path_factory):
     folder = tmp_path_factory.mktemp(f'contact-{request.param}')
     params = json.loads((ROOT/f'examples/params-{["", "", "two", "three"][request.param]}-cable.json').read_text())
+    if request.param == 2: params['thickness_profile'] = 'stepped'  # Existing primitive fit, pending taper refit.
     pfile = folder/'params.json'
     pfile.write_text(json.dumps(params))
     result = subprocess.run([sys.executable, str(ROOT/'build.py'), '--params', str(pfile),

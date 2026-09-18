@@ -4,6 +4,10 @@ Generate canonical spiral geometry, shared simulation meshes, MuJoCo MJCF,
 and whole-robot STEP/STL fabrication models. Two cables use a flat section;
 three or more cables use the existing n-lobe construction.
 
+**Thickness update:** two-cable thickness now varies linearly within and between
+links. See [continuous thickness and inspection](docs/LINEAR_THICKNESS.md) for
+the current behavior; it supersedes older per-link thickness descriptions below.
+
 Read the [parameter manual](docs/PARAMETER_MANUAL.md), also available as an
 [offline HTML manual](docs/PARAMETER_MANUAL.html), for units, defaults, base/tip
 thickness, section shapes, CAD options, dynamics and all build/tool flags.
@@ -62,21 +66,21 @@ uv run python build.py --params examples/params-two-cable.json --hex-section --h
 uv run python tools/inspect_section.py --mjcf build/hex-review/spirob_physics_model.xml --out build/hex-review/cross_sections.png
 ```
 
-`--hex-section` gives the **XY end-on view** six sides: two centre ridges and
+`--hex-section` gives a **full-width transverse XY slice** six sides: two centre ridges and
 short flat outer side walls. `--hex-edge-ratio` controls edge/centre thickness.
 Use `--base-thickness-mm 20` to set the **largest base link's centre thickness**
-to 20 mm. Each following link uses `T_i = T_base * W_i / W_base`; tip thickness
-is derived. The new initial setting, `--base-thickness-mm auto` (JSON
-`"base_thickness_m": null`), makes every link's centre thickness equal its width.
-The supplied geometry gives 31.087574 mm at the base and 7.073275 mm at the tip.
-Older ratio-only files retain their existing thickness until overridden.
+to 20 mm at the mounting plane. Thickness then decreases linearly along Z,
+continuously across the joints. `--base-thickness-mm auto` (JSON
+`"base_thickness_m": null`) sets base thickness equal to base width.
+The supplied geometry gives 31.087574 mm at the base and 6.923663 mm at the tip.
+Use `--thickness-profile stepped` to reproduce the former constant-per-link solids.
 Omitting the flag
 and the `flat_section` parameter keeps the existing rectangular simulation
 section. The equivalent saved configuration is `examples/params-two-cable-hex.json`.
 
 The new [section guide](docs/HEX_SECTION.md) covers inspection, inertia auditing,
-and fabrication export. Compound colliders currently fit the rectangular
-section and are rejected with the hex option until their geometry is updated.
+and fabrication export. Compound colliders currently fit the stepped rectangular
+section and are rejected for linear thickness or hex sections pending their refit.
 
 ## Collision shapes and body inertia
 

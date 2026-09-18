@@ -41,5 +41,6 @@
   },
   "flat_section": "hex",
   "hex_edge_ratio": 0.75,
-  "base_thickness_m": null
+  "base_thickness_m": null,
+  "thickness_profile": "linear"
 }

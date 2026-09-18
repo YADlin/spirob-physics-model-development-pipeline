@@ -38,5 +38,6 @@
       0.04
     ]
   },
-  "base_thickness_m": null
+  "base_thickness_m": null,
+  "thickness_profile": "linear"
 }

@@ -76,7 +76,7 @@ def main():
     if a.fuse_cad and not a.cad: p.error('--fuse-cad requires --cad')
     params_path = Path(a.params).resolve()
     params = resolve_section_params(json.loads(params_path.read_text(encoding='utf-8')),
-                                    hex_section=a.hex_section, hex_edge_ratio=a.hex_edge_ratio, base_thickness_mm=a.base_thickness_mm, plain=a.plain)
+                                    hex_section=a.hex_section, hex_edge_ratio=a.hex_edge_ratio, base_thickness_mm=a.base_thickness_mm, thickness_profile=a.thickness_profile, plain=a.plain)
     if a.timestep is not None:
         if not math.isfinite(a.timestep) or a.timestep <= 0: p.error('--timestep must be finite and positive')
         params['post_gen'] = dict(params.get('post_gen', {}), timestep=a.timestep)
@@ -84,18 +84,21 @@ def main():
         if a.collision_mode == 'compound':
             p.error('--hex-section compound colliders are not implemented; use --collision-mode mesh for shape review')
         if a.flat_thickness_m is not None or a.flat_edge_ratio is not None:
-            p.error('--hex-section uses flat_thickness_ratio in params and --hex-edge-ratio')
+            p.error('--hex-section uses --base-thickness-mm and --hex-edge-ratio')
     from spirob_csv_generator import validate_params
     from spirob.geometry import from_params
     validate_params(params)
     geometry = from_params(params)
     dimensions = None
     if params['n_cables'] == 2 and not a.plain:
+        params.setdefault('thickness_profile', 'linear')
+        if params['thickness_profile'] == 'linear' and a.collision_mode == 'compound':
+            p.error('Linear-taper compound colliders are not implemented; use --collision-mode mesh for shape review')
         from spirob.sections import section_dimensions
         dimensions = section_dimensions(params, geometry)
         print(f"Base centre thickness: {dimensions['base']['centre_thickness_m']*1000:.6f} mm; "
               f"tip: {dimensions['tip']['centre_thickness_m']*1000:.6f} mm "
-              f"({dimensions['mode']})", flush=True)
+              f"({dimensions['mode']}, {dimensions['thickness_profile']})", flush=True)
     if a.collision_mode == 'compound' and (a.plain or params['n_cables'] != 2):
         p.error('--collision-mode compound requires n_cables=2 without --plain')
     output = Path(a.output_dir).resolve(); output.mkdir(parents=True,exist_ok=True)

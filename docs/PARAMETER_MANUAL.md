@@ -1,5 +1,12 @@
 # SpiRob generator parameter manual
 
+> **Axial thickness update:** the default two-cable model now tapers linearly
+> inside each link and continuously across joints. See [LINEAR_THICKNESS.md](LINEAR_THICKNESS.md)
+> for the current formula, endpoint dimensions, inspection tool and collision
+> compatibility. It supersedes the per-link thickness rules below. The full
+> manual revision is deferred; `--thickness-profile stepped` reproduces those
+> earlier per-link rules.
+
 This manual describes the generator's JSON parameters, build options, desktop
 controls and supporting tools. Use Python 3.12 and the supplied uv requirements.
 Commands below run from the repository root. JSON files cannot contain comments.

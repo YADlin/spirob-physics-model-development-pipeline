@@ -541,11 +541,18 @@ def draw_nlobe_section_preview(quads, params,
 # ══════════════════════════════════════════════════════════════════════════════
 
 def draw_flat_section(ax, outer_radius, params, title="", quad=None):
-    """Draw the actual XY end-on outline, annotated in millimetres."""
-    from spirob.sections import resolve_flat_thickness_ratio, resolve_section_params
+    """Draw the section envelope at an explicit axial station, in millimetres."""
+    from spirob.sections import resolve_flat_thickness_ratio, resolve_section_params, linear_thickness_law, thickness_at_z
     params = resolve_section_params(params)
     r = float(outer_radius)*1000
     h = r*resolve_flat_thickness_ratio(params)
+    station = None
+    if params.get('thickness_profile', 'linear') == 'linear':
+        law = linear_thickness_law(params)
+        # The midpoint of the outer edge has the full X width. At a hinge
+        # the slit closes to X=0, so a full hex there would be misleading.
+        station = (float(quad[2][1])+float(quad[3][1]))/2 if quad is not None else law['z_base_m']
+        h = thickness_at_z(law, station)*500
     edge = params.get('hex_edge_ratio', .75)
     points = ([(-r,-edge*h),(0,-h),(r,-edge*h),(r,edge*h),(0,h),(-r,edge*h)]
               if params.get('flat_section') == 'hex' else [(-r,-h),(r,-h),(r,h),(-r,h)])
@@ -562,6 +569,9 @@ def draw_flat_section(ax, outer_radius, params, title="", quad=None):
     ax.annotate('',xy=(x,h),xytext=(x,-h),arrowprops=dict(arrowstyle='<->',color='#c0392b'))
     ax.text(x+.1*span,0,f'Centre\nthickness\n{2*h:.3f} mm',ha='left',va='center',fontsize=8,color='#c0392b')
     ax.set_title(title,fontsize=9,fontweight='bold',pad=8,color='#1a2f5e')
+    if station is not None:
+        ax.text(0,-span*1.58,f'Section at z = {(station-law["z_base_m"])*1000:.3f} mm from mount',
+                ha='center',fontsize=7,color='#555555')
 
 
 def draw_flat_section_preview(quads, params,
@@ -589,7 +599,7 @@ def draw_flat_section_preview(quads, params,
     from spirob.sections import resolve_flat_thickness_ratio
     t_ratio = resolve_flat_thickness_ratio(params)
     fig.text(0.5, 0.02,
-             f"Resolved thickness / width = {t_ratio:.6g}    "
+             f"Base thickness / width = {t_ratio:.6g}; axial profile: {params.get('thickness_profile','linear')}    "
              f"(dashed circle = original revolved profile for scale reference)\n"
              f"Base and tip panels use independent display scales.",
              ha="center", va="bottom", fontsize=8, color="#555555", style="italic")
