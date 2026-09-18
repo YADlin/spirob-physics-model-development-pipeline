@@ -39,3 +39,4 @@ main.py
 MUJOCO_LOG.TXT
 
 /section_dimensions.json
+/collision_summary.json

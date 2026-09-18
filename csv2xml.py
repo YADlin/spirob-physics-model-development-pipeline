@@ -9,7 +9,7 @@ from typing import Tuple
 import json
 import xml.etree.ElementTree as ET
 from spirob.mesh_assets import mesh_assets as source_mesh_assets
-from spirob.collision import rounded_flat_primitives
+from spirob.collision import rounded_flat_primitives, convex_stl_vertices
 
 # TENDON_INWARD_SHIFT and PHI_DEG are now passed explicitly via MJCFConfig
 # (read from params.json in build.py / the caller) so there is no top-level
@@ -189,8 +189,10 @@ def write_mjcf_from_sites_csv(
 ) -> str:
     elements, n_cables = _parse_sites_csv(csv_path)
     if not elements: raise ValueError("CSV has no elements.")
-    if config.physics_mode not in ('mesh', 'capsule', 'compound'):
+    if config.physics_mode not in ('mesh', 'capsule', 'compound', 'convex'):
         raise ValueError('Unknown collision mode: '+config.physics_mode)
+    if config.physics_mode == 'convex' and (plain or n_cables != 2):
+        raise ValueError('Convex collision currently requires the two-cable flat section (without --plain)')
     if not math.isfinite(config.timestep) or config.timestep <= 0:
         raise ValueError('timestep must be finite and positive')
     if config.flat_section not in ('rectangular', 'hex'):
@@ -200,12 +202,12 @@ def write_mjcf_from_sites_csv(
     if config.flat_section == 'hex' and (plain or n_cables != 2):
         raise ValueError('hex section requires n_cables=2 without plain')
     if config.flat_section == 'hex' and config.physics_mode == 'compound':
-        raise ValueError('Hex-section compound colliders are not implemented; use mesh for shape review')
+        raise ValueError('Hex-section compound colliders are not implemented; use convex collision')
     if config.thickness_profile == 'linear' and config.physics_mode == 'compound':
-        raise ValueError('Linear-taper compound colliders are not implemented; use mesh for shape review')
+        raise ValueError('Linear-taper compound colliders are not implemented; use convex collision')
     margin = config.collision_margin_m
     if margin is None:
-        margin = 0.0 if config.physics_mode == 'compound' else config.geom_margin
+        margin = 0.0 if config.physics_mode in ('compound', 'convex') else config.geom_margin
     if not math.isfinite(margin) or margin < 0:
         raise ValueError('collision margin must be nonnegative and finite')
     arena = config.arena_memory_mib
@@ -285,6 +287,7 @@ def write_mjcf_from_sites_csv(
 
     # asset meshes
     mesh_assets = []
+    hull_cache = {}
     sources = source_mesh_assets(geometry, config.mesh_layout) if geometry is not None else None
     for i in range(len(frames)):
         mesh_name = f"link_{i+1:0{digits}d}"
@@ -297,15 +300,27 @@ def write_mjcf_from_sites_csv(
         if config.physics_mode == 'compound' and not np.all(scale == 1):
             raise ValueError('Compound collision requires native metre-scale meshes; change geometry parameters to resize')
         scale *= sources[i].scale if sources else 1.0
+        if config.physics_mode == 'convex':
+            source_path = os.path.abspath(mesh_file)
+            if source_path not in hull_cache:
+                hull_cache[source_path] = convex_stl_vertices(source_path)
+            vertices = hull_cache[source_path]
+            mesh_assets.append(ET.tostring(ET.Element(
+                'mesh', name=f'collision_mesh_{i+1:0{digits}d}',
+                vertex=' '.join(format(v, '.17g') for v in vertices.ravel()),
+                scale=' '.join(format(v, '.17g') for v in scale)), encoding='unicode'))
         # Resolve the caller's mesh directory, then make paths relative to XML.
         mesh_file = os.path.relpath(os.path.abspath(mesh_file), os.path.dirname(os.path.abspath(out_xml_path)))
         mesh_assets.append(ET.tostring(ET.Element('mesh', name=mesh_name, file=mesh_file,
                                                 scale=' '.join(format(v, '.17g') for v in scale)), encoding='unicode'))
 
     # header & defaults
+    # Multi-point surface support avoids forcing a broad face contact through
+    # one arbitrary point. This is global in MuJoCo; zero margins use native CCD.
+    flags = '<flag nativeccd="enable" multiccd="enable"/>' if config.physics_mode == 'convex' else ''
     header = f'''<mujoco model="SpiRob">
   <compiler angle="radian" inertiafromgeom="true" inertiagrouprange="1 1" autolimits="true"/>
-{size_xml}  <option timestep="{config.timestep}" gravity="{config.gravity[0]} {config.gravity[1]} {config.gravity[2]}" integrator="{config.integrator}"/>
+{size_xml}  <option timestep="{config.timestep}" gravity="{config.gravity[0]} {config.gravity[1]} {config.gravity[2]}" integrator="{config.integrator}">{flags}</option>
   <visual>
     <quality shadowsize="4096"/>
     <map znear="0.01" zfar="20"/>
@@ -402,6 +417,9 @@ def write_mjcf_from_sites_csv(
             cap_r = max(config.capsule_radius_min, config.capsule_radius_scale*max(r0, r1))
             geoms.append(ET.tostring(ET.Element('geom', name=f'collision_{i+1:0{digits}d}_capsule',
                          type='capsule', fromto=f'0 0 0 0 0 {L}', size=str(cap_r), **collision_attrs), encoding='unicode'))
+        elif config.physics_mode == 'convex':
+            geoms.append(ET.tostring(ET.Element('geom', name=f'collision_{i+1:0{digits}d}_hull',
+                type='mesh', mesh=f'collision_mesh_{i+1:0{digits}d}', **collision_attrs), encoding='unicode'))
         elif config.physics_mode == 'compound':
             for j, shape in enumerate(rounded_flat_primitives(geometry, i, config.flat_thickness_ratio,
                                                              config.collision_corner_radius_ratio)):
@@ -514,11 +532,12 @@ if __name__ == "__main__":
     parser.add_argument("--out", dest="output", default="spirob_physics_model.xml", help="Output XML file")
     parser.add_argument("--meshdir", default="meshes", help="Directory containing STL meshes")
     parser.add_argument('--mesh-layout', choices=['shared', 'individual'], default=None)
-    parser.add_argument('--collision-mode', choices=['mesh', 'capsule', 'compound'])
+    parser.add_argument('--collision-mode', choices=['mesh', 'capsule', 'compound', 'convex'],
+                        help='convex: one massless hull per two-cable link, native multi-point contacts')
     parser.add_argument('--collision-corner-radius-ratio', type=float, default=0.04,
                         help='Compound corner radius / link half-width (default: 0.04)')
     parser.add_argument('--collision-margin-m', type=float,
-                        help='Contact margin in metres; default 0 for compound, otherwise the selected preset')
+                        help='Contact margin in metres; default 0 for compound/convex, otherwise the selected preset')
     parser.add_argument('--arena-memory-mib', type=int,
                         help='Native MuJoCo arena MiB; default 128 for compound, otherwise compiler default')
     parser.add_argument('--plain', action='store_true')

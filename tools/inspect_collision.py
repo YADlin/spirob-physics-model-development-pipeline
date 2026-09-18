@@ -18,9 +18,19 @@ def collision_report(xml_path, model):
     bodies = [b for b in root.findall('.//body') if b.get('name', '').startswith('link_')]
     proxies = [g for g in root.findall('.//geom') if g.get('name', '').startswith('collision_')]
     assets = root.findall('./asset/mesh')
+    per_body = {}
+    for body in bodies:
+        bid = model.body(body.get('name')).id
+        ids = range(model.body_geomadr[bid], model.body_geomadr[bid]+model.body_geomnum[bid])
+        per_body[body.get('name')] = sum(bool(model.geom_contype[g] or model.geom_conaffinity[g]) for g in ids)
     return dict(links=len(bodies), mesh_assets=len(assets),
-                source_stl_files=sorted({m.get('file') for m in assets}),
+                source_stl_files=sorted({m.get('file') for m in assets if m.get('file')}),
                 collision_primitives=len(proxies),
+                contact_geoms_per_link=per_body,
+                total_link_contact_geoms=sum(per_body.values()),
+                inline_convex_meshes=sum(m.get('vertex') is not None for m in assets),
+                nativeccd=not bool(model.opt.disableflags & mujoco.mjtDisableBit.mjDSBL_NATIVECCD),
+                multiccd=bool(model.opt.enableflags & mujoco.mjtEnableBit.mjENBL_MULTICCD),
                 explicit_inertias=len([b for b in bodies if b.find('inertial') is not None]),
                 inertia_from_geom=root.find('compiler').get('inertiafromgeom'),
                 all_proxies_zero_mass=all(float(g.get('mass', '-1')) == 0 for g in proxies),

@@ -1,6 +1,7 @@
-"""Massless native-primitive colliders for the flat, two-cable CAD profile.
+"""Collision envelopes for the flat, two-cable CAD profile.
 
-The XZ outline is rounded *inwards*: inset the convex polygon by r, then
+The convex mode embeds the simulation STL's hull as one massless geom. The
+legacy compound's XZ outline is rounded *inwards*: inset the polygon by r, then
 cover its dilation by r with edge boxes, corner cylinders, and interior
 boxes. Cylinder axes run along Y, preserving the CAD's flat front/back.
 MuJoCo treats these as overlapping geoms, not a Boolean-fused solid.
@@ -9,6 +10,34 @@ from __future__ import annotations
 
 import math
 import numpy as np
+
+
+def convex_stl_vertices(path):
+    """Hull of a generated binary STL, in its original (unscaled) frame.
+
+    Return just the hull vertices. MJCF builds the convex faces from this point
+    cloud; rendering the collision asset then shows the actual contact shape.
+    No decimation is applied: curved/nonconvex portions are filled by the hull.
+    The caller caches this per source STL and applies each link's asset scale.
+    """
+    from pathlib import Path
+    import struct
+    from scipy.spatial import ConvexHull
+
+    data = Path(path).read_bytes()
+    if len(data) < 84:
+        raise ValueError(f'Incomplete binary STL: {path}')
+    count = struct.unpack_from('<I', data, 80)[0]
+    if not count or len(data) != 84 + 50*count:
+        raise ValueError(f'Expected generated binary STL: {path}')
+    dtype = np.dtype([('normal', '<f4', (3,)), ('vertices', '<f4', (3, 3)),
+                      ('attribute', '<u2')])
+    points = np.frombuffer(data, dtype=dtype, offset=84)['vertices'].reshape(-1, 3)
+    points = np.unique(points.astype(float), axis=0)
+    if not np.all(np.isfinite(points)):
+        raise ValueError(f'Nonfinite STL vertices: {path}')
+    hull = ConvexHull(points)
+    return points[hull.vertices]
 
 
 def flat_outline(geometry, index):

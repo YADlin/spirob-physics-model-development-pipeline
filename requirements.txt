@@ -5,3 +5,4 @@ matplotlib==3.11.1
 mujoco==3.3.5
 numpy==2.5.3
 pandas==2.2.3
+scipy==1.18.1

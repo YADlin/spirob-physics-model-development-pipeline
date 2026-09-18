@@ -51,12 +51,12 @@ def main():
     section_arguments(p)
     p.add_argument('--mesh-layout',choices=['shared','individual'],default='shared',
                    help='Reuse one complete-link STL plus a partial-base STL (default: shared)')
-    p.add_argument('--collision-mode',choices=['mesh','capsule','compound'],
-                   help='Contact shape; compound uses boxes/cylinders for the two-cable flat section')
+    p.add_argument('--collision-mode',choices=['mesh','capsule','compound','convex'],
+                   help='convex: one hull per two-cable link; compound: legacy overlapping boxes/cylinders')
     p.add_argument('--collision-corner-radius-ratio',type=float,default=0.04,
                    help='Compound corner radius / link half-width (default: 0.04)')
     p.add_argument('--collision-margin-m',type=float,
-                   help='Contact margin in metres; default 0 for compound, otherwise the selected preset')
+                   help='Contact margin in metres; default 0 for compound/convex, otherwise the selected preset')
     p.add_argument('--arena-memory-mib',type=int,
                    help='Native MuJoCo arena MiB; default 128 for compound, otherwise compiler default')
     p.add_argument('--align-geom-frames',action='store_true',
@@ -82,7 +82,7 @@ def main():
         params['post_gen'] = dict(params.get('post_gen', {}), timestep=a.timestep)
     if params.get('flat_section') == 'hex':
         if a.collision_mode == 'compound':
-            p.error('--hex-section compound colliders are not implemented; use --collision-mode mesh for shape review')
+            p.error('--hex-section compound colliders are not implemented; use --collision-mode convex')
         if a.flat_thickness_m is not None or a.flat_edge_ratio is not None:
             p.error('--hex-section uses --base-thickness-mm and --hex-edge-ratio')
     from spirob_csv_generator import validate_params
@@ -93,7 +93,7 @@ def main():
     if params['n_cables'] == 2 and not a.plain:
         params.setdefault('thickness_profile', 'linear')
         if params['thickness_profile'] == 'linear' and a.collision_mode == 'compound':
-            p.error('Linear-taper compound colliders are not implemented; use --collision-mode mesh for shape review')
+            p.error('Linear-taper compound colliders are not implemented; use --collision-mode convex')
         from spirob.sections import section_dimensions
         dimensions = section_dimensions(params, geometry)
         print(f"Base centre thickness: {dimensions['base']['centre_thickness_m']*1000:.6f} mm; "
@@ -101,6 +101,8 @@ def main():
               f"({dimensions['mode']}, {dimensions['thickness_profile']})", flush=True)
     if a.collision_mode == 'compound' and (a.plain or params['n_cables'] != 2):
         p.error('--collision-mode compound requires n_cables=2 without --plain')
+    if a.collision_mode == 'convex' and (a.plain or params['n_cables'] != 2):
+        p.error('--collision-mode convex currently requires n_cables=2 without --plain')
     output = Path(a.output_dir).resolve(); output.mkdir(parents=True,exist_ok=True)
     # Stage alongside the destination so publishing uses same-filesystem renames.
     with tempfile.TemporaryDirectory(prefix='.spirob-build-',dir=output.parent) as td:
@@ -135,6 +137,9 @@ def main():
         model=mujoco.MjModel.from_xml_path(str(stage/'spirob_physics_model.xml'))
         if model.ntendon != params['n_cables'] or model.nu != params['n_cables']:
             raise ValueError('Compiled MJCF cable/actuator count mismatch')
+        from tools.inspect_collision import collision_report
+        report = collision_report(stage/'spirob_physics_model.xml', model)
+        (stage/'collision_summary.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
         if a.align_geom_frames:
             from spirob.mujoco_frames import aligned_geom_model
             model = aligned_geom_model(model)
@@ -150,7 +155,7 @@ def main():
         # Stages validated. Roll back replacements if publishing itself fails.
         backup=stage/'previous'; backup.mkdir()
         published=[]; moved=[]
-        names=['Geom_Data_CSV','meshes','spirob_physics_model.xml','build_params.json','section_dimensions.json']+(['cad'] if a.cad else [])
+        names=['Geom_Data_CSV','meshes','spirob_physics_model.xml','build_params.json','section_dimensions.json','collision_summary.json']+(['cad'] if a.cad else [])
         # Always retire a previous MJB when rebuilding: it must never describe
         # an older robot than the XML/meshes in this output directory.
         names.append('spirob_aligned.mjb')

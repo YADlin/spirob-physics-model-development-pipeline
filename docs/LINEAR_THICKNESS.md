@@ -96,11 +96,15 @@ accepted: the ratio sets base thickness; the default profile is now linear.
 Explicitly select `stepped` when reproducing or auditing an older XML.
 New `build_params.json` files always record the profile.
 
+For the subsequent collision update, see [CONVEX_COLLISION.md](CONVEX_COLLISION.md).
+`--collision-mode convex` now provides one massless hull per two-cable link,
+including the tapered hex section. That note documents its surface approximation.
+
 The existing rectangular compound colliders describe constant-thickness
 extrusions. They are rejected for the linear profile rather than silently
 presented as matching its surface. Use mesh contacts for this shape review.
 The legacy stepped rectangular model can still use the existing compound
-colliders. Collision primitive refitting and count reduction are the next task.
+colliders.
 Three-or-more-cable geometry is unchanged.
 
 Fabrication export uses the same tapered solids, adds the selected central

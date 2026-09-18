@@ -57,7 +57,7 @@ def models(request, tmp_path_factory):
     assert result.returncode == 0, result.stdout + result.stderr
     geo = from_params(params)
     paths = {'mesh': folder/'spirob_physics_model.xml'}
-    for mode in ['capsule'] + (['compound'] if request.param == 2 else []):
+    for mode in ['capsule'] + (['compound', 'convex'] if request.param == 2 else []):
         cfg = MJCFConfig(physics_mode=mode, joint_type='hinge' if request.param == 2 else 'ball',
                          mesh_layout='shared', phi_deg=params['phi_deg'], post_gen=params['post_gen'],
                          tendon_inward_shift=params['tendon_inward_shift'],
