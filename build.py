@@ -52,7 +52,9 @@ def main():
     p.add_argument('--mesh-layout',choices=['shared','individual'],default='shared',
                    help='Reuse one complete-link STL plus a partial-base STL (default: shared)')
     p.add_argument('--collision-mode',choices=['mesh','capsule','compound','convex'],
-                   help='convex: one hull per two-cable link; compound: legacy overlapping boxes/cylinders')
+                   help='convex: one hull per flat or n-lobe link; compound: legacy two-cable boxes/cylinders')
+    p.add_argument('--show-target-marker',action='store_true',
+                   help='Show the optional red target marker; hidden by default, named target site is retained')
     p.add_argument('--collision-corner-radius-ratio',type=float,default=0.04,
                    help='Compound corner radius / link half-width (default: 0.04)')
     p.add_argument('--collision-margin-m',type=float,
@@ -101,8 +103,11 @@ def main():
               f"({dimensions['mode']}, {dimensions['thickness_profile']})", flush=True)
     if a.collision_mode == 'compound' and (a.plain or params['n_cables'] != 2):
         p.error('--collision-mode compound requires n_cables=2 without --plain')
-    if a.collision_mode == 'convex' and (a.plain or params['n_cables'] != 2):
-        p.error('--collision-mode convex currently requires n_cables=2 without --plain')
+    if a.collision_mode == 'convex' and a.plain:
+        p.error('--collision-mode convex supports flat and n-lobe sections; omit --plain')
+    if a.collision_mode == 'convex' and params['n_cables'] >= 3:
+        print('Convex collision: one hull per n-lobe link; concave notches are bridged. '
+              'Use tools/inspect_collision_surface.py to measure the surface difference.', flush=True)
     output = Path(a.output_dir).resolve(); output.mkdir(parents=True,exist_ok=True)
     # Stage alongside the destination so publishing uses same-filesystem renames.
     with tempfile.TemporaryDirectory(prefix='.spirob-build-',dir=output.parent) as td:
@@ -126,6 +131,7 @@ def main():
              '--phi-deg',params['phi_deg'],'--mesh-layout',a.mesh_layout,
              '--collision-corner-radius-ratio',a.collision_corner_radius_ratio]
         if a.collision_mode: xml.extend(['--collision-mode',a.collision_mode])
+        if a.show_target_marker: xml.append('--show-target-marker')
         if a.collision_margin_m is not None: xml.extend(['--collision-margin-m',a.collision_margin_m])
         if a.arena_memory_mib is not None: xml.extend(['--arena-memory-mib',a.arena_memory_mib])
         if a.plain: xml.append('--plain')

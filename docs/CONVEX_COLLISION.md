@@ -1,9 +1,11 @@
-# Two-cable collision update
+# Convex collision
 
 Select `--collision-mode convex` for one massless convex mesh collider per link.
-This supports rectangular/hex sections and linear/stepped thickness. It is
-restricted to two-cable, non-plain models. Existing defaults and collision
-modes remain available. The n-cable collider redesign is a later task.
+This supports two-cable rectangular/hex sections with linear/stepped thickness,
+and n-lobe sections for three or more cables. It excludes `--plain` models.
+Existing defaults and collision modes remain available. For n-cable examples,
+notch approximation measurements and the target-marker change, see
+[NCABLE_CONVEX.md](NCABLE_CONVEX.md).
 
 The old compound model overlaps many boxes/cylinders on each rigid link.
 MuJoCo solves contacts from their individual geom pairs; it does not Boolean
@@ -30,7 +32,7 @@ The native multi-point path requires zero margins on both contacting objects;
 positive margins trigger MuJoCo's slower fallback. The flag is a global option
 and therefore also applies to other compatible object pairs in the scene.
 
-## Surface fit
+## Two-cable surface fit
 
 Rectangular sections (including the continuous axial taper) and stepped hex
 sections are convex and retain their CAD envelope to mesh precision. The old

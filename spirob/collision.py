@@ -1,7 +1,7 @@
-"""Collision envelopes for the flat, two-cable CAD profile.
+"""Collision envelopes for SpiRob CAD profiles.
 
-The convex mode embeds the simulation STL's hull as one massless geom. The
-legacy compound's XZ outline is rounded *inwards*: inset the polygon by r, then
+The convex mode embeds each flat or n-lobe STL's hull as one massless geom.
+The legacy two-cable compound's XZ outline is rounded *inwards*: inset it by r, then
 cover its dilation by r with edge boxes, corner cylinders, and interior
 boxes. Cylinder axes run along Y, preserving the CAD's flat front/back.
 MuJoCo treats these as overlapping geoms, not a Boolean-fused solid.

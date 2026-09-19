@@ -39,6 +39,23 @@ def surface_samples(mesh, subdivisions=4):
     return np.unique(np.einsum('ij,tjk->tik', weights, mesh.triangles).reshape(-1, 3), axis=0)
 
 
+def inspection_mesh(vertices, faces):
+    """Omit zero-area seam triangles for surface topology checks only.
+
+    Some revolved n-lobe meshes retain collapsed seam faces after MuJoCo's
+    vertex deduplication. They have exactly zero area. Do not fill holes,
+    decimate surfaces, or change any positive-area triangle or model asset.
+    """
+    import trimesh
+    mesh = trimesh.Trimesh(vertices=vertices, faces=faces, process=True)
+    keep = mesh.area_faces > 0
+    removed = int(np.count_nonzero(~keep))
+    if removed:
+        mesh.update_faces(keep)
+        mesh.remove_unreferenced_vertices()
+    return mesh, removed
+
+
 def max_surface_distance(surface, samples):
     import trimesh
     maximum = 0.
@@ -62,14 +79,15 @@ def inspect(xml_path, links, out=None):
     for name in names:
         v, f = compiled_surface(model, name)
         cv, cf = collider_surface(model, name)
-        cad = trimesh.Trimesh(vertices=v, faces=f, process=True)
-        collider = trimesh.Trimesh(vertices=cv, faces=cf, process=True)
+        cad, cad_degenerate = inspection_mesh(v, f)
+        collider, collider_degenerate = inspection_mesh(cv, cf)
         if not cad.is_volume or not collider.is_volume:
             raise ValueError(f'{name}: expected closed, outward-oriented solids')
         equations = ConvexHull(cv).equations
         outside = max(0., float(np.max(v @ equations[:, :3].T+equations[:, 3])))
         a = surface_samples(cad); b = surface_samples(collider)
         report['links'].append(dict(body=name, cad_volume_mm3=float(cad.volume),
+            cad_zero_area_faces_omitted=cad_degenerate, collider_zero_area_faces_omitted=collider_degenerate,
             collider_volume_mm3=float(collider.volume), excess_volume_percent=100*(collider.volume/cad.volume-1),
             cad_outside_hull_mm=outside, cad_to_collider_sampled_max_mm=max_surface_distance(collider, a),
             collider_to_cad_sampled_max_mm=max_surface_distance(cad, b),

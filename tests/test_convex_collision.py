@@ -48,6 +48,7 @@ def test_one_collider_shared_files_and_unchanged_dynamics(convex):
     assert report['total_link_contact_geoms'] == report['links'] == 21
     assert set(report['contact_geoms_per_link'].values()) == {1}
     assert report['all_proxies_zero_mass'] and report['nativeccd'] and report['multiccd']
+    assert report['target_site_retained'] and not report['target_marker_visible']
     assert report['max_contact_margin_m'] == 0
     assert len(report['source_stl_files']) == len(list((folder/'meshes').glob('*.stl'))) == 2
     for attr in ('body_mass','body_ipos','body_iquat','body_inertia','jnt_stiffness','dof_damping',
@@ -154,8 +155,8 @@ def test_array_shares_convex_assets(convex):
     assert sum(multiple.body_mass) == pytest.approx(2*sum(single.body_mass),rel=1e-13)
 
 
-def test_convex_rejects_n_cable_and_plain(tmp_path):
-    for options in (['--params',str(ROOT/'examples/params-three-cable.json')],
+def test_convex_rejects_plain(tmp_path):
+    for options in (['--params',str(ROOT/'examples/params-three-cable.json'),'--plain'],
                     ['--params',str(ROOT/'examples/params-two-cable.json'),'--plain']):
         result = subprocess.run([sys.executable,str(ROOT/'build.py'),*options,'--collision-mode','convex',
             '--no-preview','--output-dir',str(tmp_path)],capture_output=True,text=True)

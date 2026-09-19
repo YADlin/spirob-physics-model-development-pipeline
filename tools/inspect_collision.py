@@ -18,12 +18,15 @@ def collision_report(xml_path, model):
     bodies = [b for b in root.findall('.//body') if b.get('name', '').startswith('link_')]
     proxies = [g for g in root.findall('.//geom') if g.get('name', '').startswith('collision_')]
     assets = root.findall('./asset/mesh')
+    target_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, 'target')
     per_body = {}
     for body in bodies:
         bid = model.body(body.get('name')).id
         ids = range(model.body_geomadr[bid], model.body_geomadr[bid]+model.body_geomnum[bid])
         per_body[body.get('name')] = sum(bool(model.geom_contype[g] or model.geom_conaffinity[g]) for g in ids)
     return dict(links=len(bodies), mesh_assets=len(assets),
+                target_site_retained=target_id >= 0,
+                target_marker_visible=bool(target_id >= 0 and model.site_rgba[target_id, 3] > 0),
                 source_stl_files=sorted({m.get('file') for m in assets if m.get('file')}),
                 collision_primitives=len(proxies),
                 contact_geoms_per_link=per_body,

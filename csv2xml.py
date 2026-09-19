@@ -55,6 +55,7 @@ class MJCFConfig:
 
     # Post-generation overrides (populated from params.json "post_gen" block)
     post_gen: dict = None
+    show_target_marker: bool = False
 
     def __post_init__(self):
         if self.post_gen is None:
@@ -191,8 +192,8 @@ def write_mjcf_from_sites_csv(
     if not elements: raise ValueError("CSV has no elements.")
     if config.physics_mode not in ('mesh', 'capsule', 'compound', 'convex'):
         raise ValueError('Unknown collision mode: '+config.physics_mode)
-    if config.physics_mode == 'convex' and (plain or n_cables != 2):
-        raise ValueError('Convex collision currently requires the two-cable flat section (without --plain)')
+    if config.physics_mode == 'convex' and (plain or n_cables < 2):
+        raise ValueError('Convex collision requires n_cables >= 2 with a flat or n-lobe section (without --plain)')
     if not math.isfinite(config.timestep) or config.timestep <= 0:
         raise ValueError('timestep must be finite and positive')
     if config.flat_section not in ('rectangular', 'hex'):
@@ -443,12 +444,14 @@ def write_mjcf_from_sites_csv(
     </body>'''
         body_xml.append(block)
 
-    # Optional target site in worldbody
+    # Retain the optional named reference for consumers, but hide its debug
+    # marker unless explicitly requested. A site never contributes contacts.
     target_site_xml = ""
     if target_site_pos is not None:
         p = target_site_pos
+        alpha = '1' if config.show_target_marker else '0'
         target_site_xml = (f'    <site name="target" type="sphere" size="0.005" '
-                           f'rgba="1 0 0 1" pos="{p[0]} {p[1]} {p[2]}"/>\n')
+                           f'rgba="1 0 0 {alpha}" pos="{p[0]} {p[1]} {p[2]}"/>\n')
 
     # Optional tip site attached to the last (tip) body
     tip_site_xml = ""
@@ -533,7 +536,9 @@ if __name__ == "__main__":
     parser.add_argument("--meshdir", default="meshes", help="Directory containing STL meshes")
     parser.add_argument('--mesh-layout', choices=['shared', 'individual'], default=None)
     parser.add_argument('--collision-mode', choices=['mesh', 'capsule', 'compound', 'convex'],
-                        help='convex: one massless hull per two-cable link, native multi-point contacts')
+                        help='convex: one massless hull per flat or n-lobe link, native multi-point contacts')
+    parser.add_argument('--show-target-marker', action='store_true',
+                        help='Show the optional red target marker (default: hidden)')
     parser.add_argument('--collision-corner-radius-ratio', type=float, default=0.04,
                         help='Compound corner radius / link half-width (default: 0.04)')
     parser.add_argument('--collision-margin-m', type=float,
@@ -575,6 +580,7 @@ if __name__ == "__main__":
     config.collision_corner_radius_ratio = args.collision_corner_radius_ratio
     config.collision_margin_m = args.collision_margin_m
     config.arena_memory_mib = args.arena_memory_mib
+    config.show_target_marker = args.show_target_marker
     if args.collision_mode:
         config.physics_mode = args.collision_mode
     if args.hinge:
