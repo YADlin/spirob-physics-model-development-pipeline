@@ -1,3 +1,0 @@
--r requirements-fabrication.txt
-pytest==9.1.1
-scipy==1.18.1

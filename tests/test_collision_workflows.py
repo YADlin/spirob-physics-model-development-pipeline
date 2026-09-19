@@ -12,7 +12,7 @@ import pytest
 from shapely.geometry import Point, Polygon
 from shapely.ops import unary_union
 
-from csv2xml import MJCFConfig, write_mjcf_from_sites_csv
+from spirob.pipeline.csv2xml import MJCFConfig, write_mjcf_from_sites_csv
 from spirob.collision import flat_outline, rounded_flat_primitives
 from spirob.geometry import from_params
 from spirob.mesh_assets import mesh_assets
@@ -53,7 +53,7 @@ def models(request, tmp_path_factory):
     pfile = folder/'params.json'
     pfile.write_text(json.dumps(params))
     result = subprocess.run([sys.executable, str(ROOT/'build.py'), '--params', str(pfile),
-                             '--no-preview', '--output-dir', str(folder)], capture_output=True, text=True)
+                             '--no-preview', '--collision-mode', 'mesh', '--output-dir', str(folder)], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     geo = from_params(params)
     paths = {'mesh': folder/'spirob_physics_model.xml'}

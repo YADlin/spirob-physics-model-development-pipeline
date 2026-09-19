@@ -34,7 +34,7 @@ def aligned_geom_model(model):
     Never mutate a model already in use by a viewer or simulation.
     """
     if mujoco.__version__ != '3.3.5':
-        raise ValueError('Geom alignment is validated for MuJoCo 3.3.5; use the pinned requirements')
+        raise ValueError('Geom alignment is validated for MuJoCo 3.3.5; run uv sync --locked')
     if model.nplugin:
         raise ValueError('Geom alignment does not support plugin models')
     targets = []

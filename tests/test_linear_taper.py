@@ -97,7 +97,7 @@ def test_all_compiled_links_taper_and_join_continuously(tapered):
 
 def test_cad_inertia_and_connected_fabrication(tapered,tmp_path):
     import cadquery as cq
-    from cad_export import process_cad
+    from spirob.pipeline.cad_export import process_cad
     from tools.audit_inertia import audit
     folder,kind=tapered;p=json.loads((folder/'build_params.json').read_text())
     result=audit(folder/'spirob_physics_model.xml',params=p,links=['link_001','link_002','link_021'])

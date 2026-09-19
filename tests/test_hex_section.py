@@ -125,7 +125,7 @@ def test_section_inspection_uses_body_axes(hex_build, tmp_path):
 @pytest.mark.parametrize('edge', [.25, .9])
 def test_custom_edge_ratio_and_whole_units(edge):
     from spirob.geometry import from_params
-    from csv2geom_nlobe import build_flat_element
+    from spirob.pipeline.csv2geom_nlobe import build_flat_element
     params = json.loads((ROOT/'examples/params-two-cable.json').read_text())
     params.update(flat_section='hex', hex_edge_ratio=edge, terminal_unit_policy='whole_units')
     geo = from_params(params)
@@ -142,7 +142,7 @@ def test_custom_edge_ratio_and_whole_units(edge):
 @pytest.mark.parametrize('hole', [0, 1])
 def test_fabrication_hex_is_connected_and_closed(hex_build, tmp_path, hole):
     import cadquery as cq
-    from cad_export import process_cad
+    from spirob.pipeline.cad_export import process_cad
     folder, _ = hex_build
     params = json.loads((folder/'build_params.json').read_text())
     result = process_cad(folder/'Geom_Data_CSV/Spirob_geom_data.csv', params,
@@ -160,7 +160,7 @@ def test_fabrication_hex_is_connected_and_closed(hex_build, tmp_path, hole):
 
 def test_timestep_override_beats_preset(hex_build, tmp_path):
     folder, _ = hex_build
-    result = subprocess.run([sys.executable, str(ROOT/'csv2xml.py'), '--in', str(folder/'Geom_Data_CSV/Spirob_geom_data.csv'),
+    result = subprocess.run([sys.executable, str(ROOT/'spirob/pipeline/csv2xml.py'), '--in', str(folder/'Geom_Data_CSV/Spirob_geom_data.csv'),
                              '--meshdir', str(folder/'meshes'), '--params', str(folder/'build_params.json'), '--hinge',
                              '--high', '--timestep', '.00005', '--out', str(tmp_path/'test.xml')], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout+result.stderr

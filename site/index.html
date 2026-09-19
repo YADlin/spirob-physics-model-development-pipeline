@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>SpiRob Design Studio</title>
+    <meta
+      name="description"
+      content="Explore SpiRob geometry with annotated profiles, cross-sections, a polar spiral and a 3D preview. Export reproducible build parameters."
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="./"
+        ><span class="brand-icon">◎</span
+        ><span>SpiRob <b>Design Studio</b></span></a
+      ><span class="mode" id="mode">Parameter designer</span>
+      <nav>
+        <a
+          href="https://github.com/YADlin/spirob-physics-model-development-pipeline/blob/fix/consolidation-cad-workflows/README.md"
+          target="_blank"
+          rel="noopener"
+          >User guide ↗</a
+        ><button id="import">Import JSON</button
+        ><button id="download" class="primary">Download params.json ↓</button>
+      </nav>
+      <input id="file" type="file" accept=".json,application/json" hidden />
+    </header>
+    <div class="layout">
+      <aside class="controls">
+        <div class="intro">
+          <span class="eyebrow">DESIGN INPUTS</span>
+          <h1>Shape your SpiRob.</h1>
+          <p>Change a value. See where it acts.</p>
+        </div>
+        <label for="preset">Start from a configuration</label
+        ><select id="preset">
+          <option value="3">3 cables · n-lobe</option>
+          <option value="2hex">2 cables · hex</option>
+          <option value="2">2 cables · rectangular</option>
+          <option value="4">4 cables · n-lobe</option>
+          <option value="6">6 cables · n-lobe</option>
+        </select>
+        <div id="form"></div>
+        <button id="reset" class="subtle">Reset this configuration</button>
+      </aside>
+      <main>
+        <div class="workspace-title">
+          <div>
+            <span class="eyebrow">LIVE GEOMETRY</span>
+            <h2>Understand the shape before you build.</h2>
+          </div>
+          <div class="legend">
+            <span class="swatch cad"></span> Link surface
+            <span class="swatch cable"></span> Cable route
+            <span class="swatch core"></span> Elastic core
+          </div>
+        </div>
+        <div id="errors" role="alert" hidden></div>
+        <div id="notice" role="status" hidden></div>
+        <div class="metrics" id="metrics"></div>
+        <div class="view-controls">
+          <label
+            ><input id="dimensions" type="checkbox" checked /> Dimensions</label
+          ><label
+            ><input id="routes" type="checkbox" checked /> Cable routes</label
+          ><label><input id="core" type="checkbox" /> Fabrication core</label
+          ><label
+            >Inspect link
+            <input id="link" type="range" min="1" max="21" value="2" /><output
+              id="link-value"
+              >002</output
+            ></label
+          ><label
+            >Section station
+            <input
+              id="station"
+              type="range"
+              min="1"
+              max="99"
+              value="50"
+            /><output id="station-value">50%</output></label
+          >
+        </div>
+        <div class="preview-grid">
+          <section class="card profiles">
+            <div class="card-heading">
+              <div>
+                <h3>Straight profiles</h3>
+                <p>
+                  Local Z runs from base to tip. Click a link to inspect it.
+                </p>
+              </div>
+              <span class="tag" id="section-tag"></span>
+            </div>
+            <svg
+              id="profiles"
+              viewBox="0 0 800 370"
+              role="img"
+              aria-label="Annotated width and thickness profiles"
+            ></svg>
+            <div id="profile-note" class="card-note"></div>
+          </section>
+          <section class="card section">
+            <div class="card-heading">
+              <div>
+                <h3>Cross-section · XY</h3>
+                <p id="section-location">Slice through the selected link</p>
+              </div>
+              <label class="small"
+                ><input id="construction" type="checkbox" /> Construction</label
+              >
+            </div>
+            <svg
+              id="section"
+              viewBox="0 0 440 370"
+              role="img"
+              aria-label="Cross-section showing material, cable position and wall clearance"
+            ></svg>
+            <div id="section-note" class="card-note"></div>
+          </section>
+          <section class="card polar">
+            <div class="card-heading">
+              <div>
+                <h3>Curled construction · polar view</h3>
+                <p>r in mm, θ counter-clockwise from +X. Tip at θ = 0.</p>
+              </div>
+              <span class="tag">Logarithmic spiral</span>
+            </div>
+            <svg
+              id="polar"
+              viewBox="0 0 570 380"
+              role="img"
+              aria-label="Logarithmic spiral with angular segment and pole"
+            ></svg>
+            <div class="card-note">
+              This is the geometric construction, not a simulated equilibrium
+              under cable force.
+            </div>
+          </section>
+          <section class="card three">
+            <div class="card-heading">
+              <div>
+                <h3>3D shape preview</h3>
+                <p>Drag to rotate · scroll to zoom · double-click to reset</p>
+              </div>
+              <div class="button-group">
+                <button data-camera="iso">3D</button
+                ><button data-camera="front">Front</button
+                ><button data-camera="end">End</button
+                ><button data-camera="reset">Fit</button>
+              </div>
+            </div>
+            <canvas
+              id="three"
+              width="900"
+              height="610"
+              role="img"
+              aria-label="Rotatable sampled SpiRob surface"
+            ></canvas>
+            <div class="card-note">
+              Sampled outer surface. Drilled channels and fused flexures are
+              verified in the generated CAD, not this preview.
+            </div>
+          </section>
+        </div>
+        <section class="insight" id="insight" aria-live="polite">
+          <span class="insight-icon">↗</span>
+          <div>
+            <h3 id="insight-title">
+              A continuous design, assembled from discrete links.
+            </h3>
+            <p id="insight-text">
+              L is the requested spiral arc length. Straight links span chords,
+              so the assembled length is slightly shorter. Both are reported
+              above.
+            </p>
+          </div>
+        </section>
+        <section class="card equations">
+          <div class="card-heading">
+            <div>
+              <h3>The spiral behind the design</h3>
+              <p>
+                Derived constants update from your length, tip width and taper
+                inputs.
+              </p>
+            </div>
+          </div>
+          <div class="equation-grid">
+            <div>
+              <div class="math">r<sub>in</sub>(θ) = a e<sup>bθ</sup></div>
+              <div class="math">
+                r<sub>out</sub>(θ) = a e<sup>b(θ + 2π)</sup>
+              </div>
+              <div class="math">
+                r<sub>c</sub>(θ) = ½a (E + 1)e<sup>bθ</sup>
+              </div>
+              <p>
+                E = e<sup>2πb</sup>; nominal width d(θ) = a(E −
+                1)e<sup>bθ</sup>.
+              </p>
+            </div>
+            <div>
+              <div class="math">tan(φ/2) = b(E − 1) / [√(1 + b²)(E + 1)]</div>
+              <div class="math">a = d<sub>tip</sub> / (E − 1)</div>
+              <div class="math">L = A(e<sup>bq₀</sup> − 1)</div>
+              <p>A = √(1 + b²) a(E + 1)/(2b); q₀ = ln(1 + L/A)/b.</p>
+            </div>
+            <div id="constants" class="constants"></div>
+          </div>
+        </section>
+        <section class="card dynamics">
+          <div class="card-heading">
+            <div>
+              <h3>Joint stiffness & damping</h3>
+              <p>
+                Assumed gains for the discrete joints. Geometry alone does not
+                calibrate these values.
+              </p>
+            </div>
+            <label class="small"
+              ><input id="include-base" type="checkbox" /> Include protected
+              j_001</label
+            >
+          </div>
+          <div class="gain-layout">
+            <svg
+              id="gains"
+              viewBox="0 0 760 270"
+              role="img"
+              aria-label="Stiffness and damping against joint index"
+            ></svg>
+            <div class="gain-equations">
+              <div class="math">Kᵢ = K₀ / βⱼ<sup>3(i−1)</sup></div>
+              <div class="math">Dᵢ = D₀ / βⱼ<sup>3(i−1)</sup></div>
+              <p>
+                i starts at 1 at the base. j_001 has its own overrides. βⱼ is a
+                user assumption, independent of geometric β<sub>g</sub> =
+                e<sup>bΔθ</sup>.
+              </p>
+              <p id="gain-note"></p>
+            </div>
+          </div>
+        </section>
+        <section class="card export">
+          <div class="card-heading">
+            <div>
+              <h3>Make this configuration reproducible</h3>
+              <p>
+                JSON stores geometry, dynamics and build options. Every build
+                saves its resolved parameters and reports.
+              </p>
+            </div>
+            <button id="copy-json">Copy JSON</button>
+          </div>
+          <div class="export-grid">
+            <div>
+              <textarea
+                id="json"
+                aria-label="Editable params.json"
+                spellcheck="false"
+              ></textarea
+              ><button id="apply-json">Apply edited JSON</button>
+            </div>
+            <div class="build-panel">
+              <h4 id="build-title">Generate XML & CAD on your computer</h4>
+              <p id="build-description">
+                GitHub Pages runs these previews in your browser. The exact
+                MuJoCo and CAD exports use the Python generator.
+              </p>
+              <pre id="command"></pre>
+              <button id="copy-command">Copy command</button>
+              <div id="local-actions" hidden>
+                <button id="generate" class="primary">
+                  Generate & download model</button
+                ><a id="model-download" class="download-link" hidden
+                  >Download model ZIP ↓</a
+                >
+                <pre id="build-log" aria-live="polite"></pre>
+              </div>
+              <div id="remote-actions">
+                <p>For build buttons in this same interface, run:</p>
+                <pre>uv run python tools/designer.py</pre>
+                <p>
+                  The local builder opens at
+                  <strong>http://127.0.0.1:8765</strong>. Import your saved JSON
+                  there.
+                </p>
+                <p>
+                  <a
+                    href="https://github.com/YADlin/spirob-physics-model-development-pipeline/actions/workflows/generate-model.yml"
+                    target="_blank"
+                    rel="noopener"
+                    >Build with GitHub Actions ↗</a
+                  >
+                  · Repository owners can also paste this JSON into the manual
+                  build workflow.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+        <footer>
+          Independent implementation under MIT ·
+          <a
+            href="https://github.com/ZhanchiWang/Open-Spiral-Robots"
+            target="_blank"
+            rel="noopener"
+            >Original SpiRob project</a
+          >
+          ·
+          <a
+            href="https://github.com/YADlin/spirob-physics-model-development-pipeline"
+            target="_blank"
+            rel="noopener"
+            >Source & validation</a
+          >
+        </footer>
+      </main>
+    </div>
+    <script type="module" src="app.mjs"></script>
+  </body>
+</html>

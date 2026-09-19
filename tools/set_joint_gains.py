@@ -87,7 +87,7 @@ def update_gains(source, output, stiffness, damping, beta, *, anchor='generator'
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--mjcf', required=True)
+    parser.add_argument('--mjcf', required=True, help='Input standalone MuJoCo XML, including its associated mesh assets')
     parser.add_argument('--out', required=True, help='New XML; keep the original for comparison')
     parser.add_argument('--stiffness', required=True, type=float, help='Base coefficient, N m/rad')
     parser.add_argument('--damping', required=True, type=float, help='Base coefficient, N m s/rad')

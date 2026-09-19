@@ -61,8 +61,8 @@ def cad_references(params, names, density, plain=False):
     import cadquery as cq
     import pandas as pd
     from spirob.geometry import from_params
-    from csv2geom_nlobe import build_unit_inputs
-    from cad_export import _simulation_element_mm
+    from spirob.pipeline.csv2geom_nlobe import build_unit_inputs
+    from spirob.pipeline.cad_export import _simulation_element_mm
     geometry = from_params(params)
     records = []
     for i, quad in enumerate(geometry.inverted_quads()):
@@ -141,7 +141,7 @@ def audit(xml_path, *, params=None, links=None, density=1200., plain=False, refe
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--mjcf', required=True)
+    parser.add_argument('--mjcf', required=True, help='Input standalone MuJoCo XML, including its associated mesh assets')
     parser.add_argument('--params', help='Matching geometry parameters enable the independent CAD-solid reference')
     parser.add_argument('--density', type=float, default=1200., help='Reference density kg/m^3 (default 1200)')
     parser.add_argument('--links', nargs='+', help='Link names, e.g. link_001 link_002 link_021; default all')

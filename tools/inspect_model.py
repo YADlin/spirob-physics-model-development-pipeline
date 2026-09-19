@@ -60,7 +60,7 @@ def frame_report(model, data):
                   and row['authored_mesh_axes_max_error_vs_body'] < 1e-9
                   and row['authored_mesh_origin_error_m'] < 1e-9 for row in rows)
     geom_aligned = all(row['geom_axes_max_error_vs_body'] < 1e-9 for row in rows)
-    return {'links_checked': len(rows), 'authored_rest_frames_aligned': aligned,
+    return {'links_checked': len({row['link'] for row in rows}), 'mesh_geoms_checked': len(rows), 'authored_rest_frames_aligned': aligned,
             'geom_axes_aligned_with_bodies': geom_aligned,
             'rest_frames_aligned': aligned and geom_aligned, 'links': rows}
 
@@ -83,7 +83,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--mjcf', '--model', dest='model', required=True, help='Generated SpiRob XML or MJB')
     parser.add_argument('--view', action='store_true', help='Open the frozen inspection viewer')
-    parser.add_argument('--frames', choices=['geom', 'body'], default='geom')
+    parser.add_argument('--frames', choices=['geom', 'body'], default='geom', help='Coordinate frames to display in the inspection viewer')
     parser.add_argument('--align-geom-frames', action='store_true',
                         help='Align actual compiled Geom axes with body axes, preserving mesh surfaces')
     parser.add_argument('--save-mjb', type=Path, help='Save the inspected compiled model as .mjb')

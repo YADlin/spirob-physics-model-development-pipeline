@@ -2,7 +2,7 @@
 
 Distances are sampled in BOTH directions (not a certified Hausdorff bound).
 Units are mm in each link's body axes; visual and collision transforms are
-undone independently. Requires requirements-fabrication.txt and scipy.
+undone independently. Dependencies are installed with uv sync --locked.
 """
 from __future__ import annotations
 
@@ -118,10 +118,10 @@ def inspect(xml_path, links, out=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--mjcf', required=True)
+    parser.add_argument('--mjcf', required=True, help='Input standalone MuJoCo XML, including its associated mesh assets')
     parser.add_argument('--links', nargs='+', help='Default: base, largest complete link, tip')
-    parser.add_argument('--out', default='collision_surface.png')
-    parser.add_argument('--json', required=True)
+    parser.add_argument('--out', default='collision_surface.png', help='Output file for the generated plot or model')
+    parser.add_argument('--json', required=True, help='Write the numeric inspection report to this JSON file')
     args = parser.parse_args()
     try:
         report = inspect(args.mjcf, args.links, args.out)

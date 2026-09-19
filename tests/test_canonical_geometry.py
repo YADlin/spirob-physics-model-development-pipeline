@@ -45,7 +45,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
 sys.path.insert(0, _ROOT)
 
-import helper_functions as hf  # noqa: E402
+from tests.reference import helper_functions as hf  # noqa: E402
 from spirob.geometry import (  # noqa: E402
     BaseFrame, LengthReport, SpiRobGeometry, SpiralParameters, TendonPoint,
     TerminalUnitPolicy, Tolerances, UnitRecord, UserInputs,
@@ -300,7 +300,7 @@ def test_theta_increases_toward_the_base(geo):
 def test_canonical_tendon_points_match_csv2xml(geo, params, tmp_path):
     """The MJCF writer's independent computation must agree with the canonical
     definition. This is what makes 'shared' real rather than aspirational."""
-    c2x = _load("c2x_canon", "csv2xml.py")
+    c2x = _load("c2x_canon", "spirob/pipeline/csv2xml.py")
     csv_path = tmp_path / "sites.csv"
     hf.generate_cable_sites_csv_zrot_from_P(
         geo.inverted_quads(), n_cables=params["n_cables"], csv_path=str(csv_path))
@@ -336,7 +336,7 @@ def test_canonical_tendon_points_match_csv2xml(geo, params, tmp_path):
 
 def test_preview_consumes_canonical_tendon_points(geo, params):
     """preview.py must not recompute; it must read the canonical points."""
-    pv = _load("pv_canon", "preview.py")
+    pv = _load("pv_canon", "tools/preview.py")
     xs, ys = pv._tendon_path(pv._build_quads(params), params["tendon_inward_shift"],
                              params["phi_deg"], params)
     cable0 = geo.tendon_path(0)
@@ -353,14 +353,14 @@ def test_preview_consumes_canonical_tendon_points(geo, params):
 
 
 def test_preview_build_quads_is_the_canonical_inverted_pose(geo, params):
-    pv = _load("pv_canon2", "preview.py")
+    pv = _load("pv_canon2", "tools/preview.py")
     for a, b in zip(pv._build_quads(params), geo.inverted_quads()):
         assert np.array_equal(a, b)
 
 
 def test_preview_no_longer_forks_the_spiral_maths():
     """F-10 regression guard."""
-    src = open(os.path.join(_ROOT, "preview.py"), encoding="utf-8").read()
+    src = open(os.path.join(_ROOT, "tools/preview.py"), encoding="utf-8").read()
     for symbol in ("def _phi_from_b", "def _solve_b", "def _rotate2d",
                    "def _angle_between", "def _normalize"):
         assert symbol not in src, f"{symbol} has reappeared in preview.py"

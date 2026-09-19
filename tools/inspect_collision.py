@@ -95,13 +95,13 @@ def stress_report(model, controls, seconds=10., ramp_seconds=2.):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--mjcf', required=True)
+    parser.add_argument('--mjcf', required=True, help='Input standalone MuJoCo XML, including its associated mesh assets')
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument('--view', action='store_true')
+    mode.add_argument('--view', action='store_true', help='Open the frozen-pose CAD/collider comparison viewer')
     mode.add_argument('--stress', action='store_true', help='Bounded headless actuator/contact/memory test')
-    parser.add_argument('--controls', nargs='+', type=float)
-    parser.add_argument('--seconds', type=float, default=10.)
-    parser.add_argument('--ramp-seconds', type=float, default=2.)
+    parser.add_argument('--controls', nargs='+', type=float, help='Actuator controls in cable order, separated by spaces; must lie within the XML control ranges')
+    parser.add_argument('--seconds', type=float, default=10., help='Duration of the test in simulated seconds')
+    parser.add_argument('--ramp-seconds', type=float, default=2., help='Duration of a linear control ramp, in simulated seconds')
     parser.add_argument('--json', help='Write the inspection report to this path')
     args = parser.parse_args()
     model = mujoco.MjModel.from_xml_path(str(Path(args.mjcf).resolve()))

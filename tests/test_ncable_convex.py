@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 import trimesh
 
-from csv2xml import MJCFConfig, write_mjcf_from_sites_csv
+from spirob.pipeline.csv2xml import MJCFConfig, write_mjcf_from_sites_csv
 from spirob.geometry import from_params
 from tools.inspect_collision import collision_report
 from tools.inspect_collision_surface import collider_surface, inspection_mesh
@@ -49,7 +49,7 @@ def test_ncable_inertia_joints_cables_names_and_assets(ncable):
     assert set(report['contact_geoms_per_link'].values()) == {1}
     assert report['all_proxies_zero_mass'] and report['explicit_inertias'] == 21
     assert report['nativeccd'] and report['multiccd']
-    assert report['target_site_retained'] and not report['target_marker_visible']
+    assert not report['target_site_retained'] and not report['target_marker_visible']
     assert model.nu == model.ntendon == n
     assert np.all(model.jnt_type == mujoco.mjtJoint.mjJNT_BALL)
     assert model.nv == 3*21 and model.nq == 4*21
@@ -141,30 +141,21 @@ def test_ncable_arrays_keep_shared_hulls_and_inertias(ncable):
     assert sum(array.body_mass) == pytest.approx(2*sum(single.body_mass), rel=1e-13)
 
 
-def test_target_marker_opt_in_preserves_physics_and_site(ncable):
+def test_old_target_parameter_cannot_restore_site(ncable):
     folder, _ = ncable
-    result = subprocess.run([sys.executable, str(ROOT/'csv2xml.py'), '--in',
-        str(folder/'Geom_Data_CSV/Spirob_geom_data.csv'), '--meshdir', str(folder/'meshes'),
-        '--params', str(folder/'build_params.json'), '--collision-mode', 'convex',
-        '--phi-deg', '6.3', '--show-target-marker', '--out', str(folder/'visible.xml')],
-        capture_output=True, text=True)
-    assert result.returncode == 0, result.stdout+result.stderr
-    hidden = mujoco.MjModel.from_xml_path(str(folder/'spirob_physics_model.xml'))
-    shown = mujoco.MjModel.from_xml_path(str(folder/'visible.xml'))
-    target = hidden.site('target').id
-    assert target == shown.site('target').id and hidden.site_rgba[target, 3] == 0
-    assert shown.site_rgba[target, 3] == 1
-    for attr in ('body_mass', 'body_ipos', 'body_inertia', 'jnt_stiffness', 'dof_damping', 'site_pos'):
-        np.testing.assert_array_equal(getattr(hidden, attr), getattr(shown, attr))
+    params = json.loads((folder/'build_params.json').read_text())
+    params['post_gen']['target_site_pos'] = [.02, 0, .04]
+    cfg = MJCFConfig(physics_mode='convex', mesh_layout='shared', joint_type='ball',
+                    phi_deg=params['phi_deg'], post_gen=params['post_gen'])
+    output = folder/'retired-target.xml'
+    write_mjcf_from_sites_csv(str(folder/'Geom_Data_CSV/Spirob_geom_data.csv'),
+                             str(output), str(folder/'meshes'), config=cfg, geometry=from_params(params))
+    model = mujoco.MjModel.from_xml_path(str(output))
+    assert mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, 'target') == -1
+    assert ET.parse(output).find('.//site[@name="target"]') is None
 
 
-def test_build_forwards_target_marker_switch(tmp_path):
-    params = json.loads((ROOT/'examples/params-three-cable.json').read_text())
-    params['L'] = .012
-    pfile = tmp_path/'short.json'; pfile.write_text(json.dumps(params))
-    result = subprocess.run([sys.executable, str(ROOT/'build.py'), '--params', str(pfile),
-        '--collision-mode', 'convex', '--no-preview', '--show-target-marker',
-        '--output-dir', str(tmp_path/'build')], capture_output=True, text=True)
-    assert result.returncode == 0, result.stdout+result.stderr
-    model = mujoco.MjModel.from_xml_path(str(tmp_path/'build/spirob_physics_model.xml'))
-    assert model.site_rgba[model.site('target').id, 3] == 1
+def test_removed_target_marker_switch_rejected():
+    result = subprocess.run([sys.executable, str(ROOT/'build.py'), '--show-target-marker'],
+                            capture_output=True, text=True)
+    assert result.returncode == 2 and 'unrecognized arguments' in result.stderr

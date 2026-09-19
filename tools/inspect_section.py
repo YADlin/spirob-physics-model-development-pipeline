@@ -103,9 +103,9 @@ def inspect(xml_path, out, links=None, show=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--mjcf', required=True)
+    parser.add_argument('--mjcf', required=True, help='Input standalone MuJoCo XML, including its associated mesh assets')
     parser.add_argument('--links', nargs='+', help='Default: base, first complete link, tip')
-    parser.add_argument('--out', default='cross_sections.png')
+    parser.add_argument('--out', default='cross_sections.png', help='Output file for the generated plot or model')
     parser.add_argument('--json', help='Optional machine-readable outline coordinates')
     parser.add_argument('--show', action='store_true', help='Also open the Matplotlib window')
     args = parser.parse_args()

@@ -93,10 +93,10 @@ def benchmark(baseline, candidate, body_name='link_002'):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--baseline', required=True)
-    parser.add_argument('--candidate', required=True)
-    parser.add_argument('--body', default='link_002')
-    parser.add_argument('--json', required=True)
+    parser.add_argument('--baseline', required=True, help='Baseline XML to compare, normally the compound model')
+    parser.add_argument('--candidate', required=True, help='Candidate XML to compare, normally the convex model')
+    parser.add_argument('--body', default='link_002', help='Link body name to inspect, for example link_002')
+    parser.add_argument('--json', required=True, help='Write the numeric inspection report to this JSON file')
     args = parser.parse_args()
     try:
         report = benchmark(args.baseline, args.candidate, args.body)

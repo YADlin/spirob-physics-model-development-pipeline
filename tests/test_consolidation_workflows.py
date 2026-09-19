@@ -11,15 +11,12 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 
 
-def test_gui_commands_keep_interpreter_and_paths_with_spaces(tmp_path):
-    from design_gui import build_command,collect_params
-    cmd=build_command(tmp_path/'my params.json',tmp_path/'my outputs',cad=True)
-    assert cmd[0]==sys.executable
-    assert cmd[cmd.index('--params')+1]==str(tmp_path/'my params.json')
-    assert '--cad' in cmd
+def test_browser_builder_validates_numeric_types_and_limits():
+    from tools.designer import validate_build_request
     p=json.loads((ROOT/'params.json').read_text())
-    with pytest.raises(ValueError): collect_params(p,{'L':'nan'})
-    with pytest.raises(ValueError): collect_params(p,{'n_cables':'2.5'})
+    assert validate_build_request(p) == p
+    for change in ({'L':float('nan')},{'n_cables':2.5},{'Delta_theta_deg':1e-12}):
+        with pytest.raises(ValueError): validate_build_request(dict(p,**change))
 
 
 def test_missing_or_truncated_meshes_fail(tmp_path):
@@ -107,8 +104,8 @@ def test_array_rewrites_sensors_contacts_and_relocated_mesh(tmp_path):
 def cad_two(tmp_path_factory):
     pytest.importorskip('cadquery')
     from spirob.geometry import from_params
-    from helper_functions import generate_cable_sites_csv_zrot_from_P
-    from cad_export import process_cad
+    from spirob.csv_io import generate_cable_sites_csv_zrot_from_P
+    from spirob.pipeline.cad_export import process_cad
     d=tmp_path_factory.mktemp('cad2');p=json.loads((ROOT/'params.json').read_text());p['n_cables']=2
     g=from_params(p);csv=d/'geometry.csv'
     generate_cable_sites_csv_zrot_from_P(g.inverted_quads(),n_cables=2,csv_path=str(csv),radial_scale=1.0)
@@ -141,7 +138,7 @@ def test_fabrication_scale_connectivity_and_slits(cad_two):
 def test_cable_holes_preserve_closed_fabrication_mesh(cad_two,tmp_path):
     import cadquery as cq
     import trimesh
-    from cad_export import process_cad
+    from spirob.pipeline.cad_export import process_cad
     result,g,p=cad_two
     csv=Path(result.step_path).parent.parent/'geometry.csv'
     drilled=process_cad(str(csv),p,outdir=str(tmp_path),cable_hole_diameter_mm=1)

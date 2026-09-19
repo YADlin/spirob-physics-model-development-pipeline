@@ -6,7 +6,7 @@
   "terminal_unit_policy": "exact_requested_length",
   "n_cables": 3,
   "tendon_inward_shift": 0.0015,
-  "show_preview": true,
+  "show_preview": false,
   "notch_factor": 0.25,
   "nlobe_t": 0.5,
   "post_gen": {
@@ -32,10 +32,10 @@
       0,
       0.005
     ],
-    "target_site_pos": [
-      0.02,
-      0.0,
-      0.04
-    ]
+    "timestep": 0.0001
+  },
+  "build": {
+    "collision_mode": "convex",
+    "mesh_layout": "shared"
   }
 }

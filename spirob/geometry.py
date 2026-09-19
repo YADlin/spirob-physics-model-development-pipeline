@@ -95,7 +95,7 @@ TENDON POINTS
     The routing stage reproduces ``csv2xml.py`` exactly (verified to 1e-15 by
     ``tests/test_canonical_geometry.py``) so that adopting this model changes
     no routing convention. The partial base surface correction intentionally
-    changes that link's attachment/routing points. See ``docs/GEOMETRY_AUDIT.md`` F-08 for the open
+    changes that link's attachment/routing points. See ``docs/engineering/GEOMETRY_AUDIT.md`` F-08 for the open
     question about whether that correction is the right long-term rule.
 
 FABRICATION ANCHORS (deferred to a later phase)
@@ -199,7 +199,7 @@ def phi_from_b(b: float) -> float:
     rather than the algebraically identical ``atan(num/den)``: for ``b > 0``
     the denominator is positive so the two are mathematically the same, but
     they round differently, and the difference propagates into every CSV, STL
-    and MJCF value. See docs/CANONICAL_GEOMETRY.md, "Numerical contract".
+    and MJCF value. See docs/engineering/CANONICAL_GEOMETRY.md, "Numerical contract".
     """
     e = math.exp(2 * math.pi * b)
     num = b * (e - 1.0)

@@ -55,18 +55,15 @@ def test_legacy_ratio_and_cli_override_are_unambiguous():
         resolve_section_params(p, base_thickness_mm='20', plain=True)
 
 
-def test_gui_roundtrip_and_switch_to_n_cables():
-    from design_gui import collect_params, thickness_field_value
+def test_parameter_roundtrip_and_rejection_on_n_cables():
     p = two_params()
-    assert thickness_field_value(p) == 'auto'
-    q = collect_params(p, dict(base_thickness_mm='20', flat_section='hex', hex_edge_ratio='.6'))
+    q = resolve_section_params(p, base_thickness_mm='20', hex_section=True, hex_edge_ratio=.6)
     assert q['base_thickness_m'] == .020 and q['hex_edge_ratio'] == .6
-    assert thickness_field_value(q) == '20'
-    q = collect_params(q, dict(n_cables='3', base_thickness_mm='20', flat_section='hex', hex_edge_ratio='.6'))
-    assert 'base_thickness_m' not in q and 'hex_edge_ratio' not in q and 'flat_section' not in q
-    p.pop('base_thickness_m');p['flat_thickness_ratio'] = .3
-    actual = float(thickness_field_value(p))
-    assert actual/1000 == pytest.approx(from_params(p).units[0].realized_width_m*.3)
+    assert section_dimensions(q)['base']['centre_thickness_m'] == pytest.approx(.020)
+    with pytest.raises(ValueError, match='n_cables=2'):
+        resolve_section_params(dict(q, n_cables=3))
+    p.pop('base_thickness_m'); p['flat_thickness_ratio'] = .3
+    assert section_dimensions(p)['base']['centre_thickness_m'] == pytest.approx(from_params(p).units[0].realized_width_m*.3)
 
 
 @pytest.fixture(scope='module', params=['hex', 'rectangular'])
@@ -106,7 +103,7 @@ def test_absolute_cad_audit_and_fabrication_match(absolute_build,tmp_path):
     import cadquery as cq
     import trimesh
     from tools.audit_inertia import audit
-    from cad_export import process_cad
+    from spirob.pipeline.cad_export import process_cad
     folder,kind,model=absolute_build
     params=json.loads((folder/'build_params.json').read_text())
     result=audit(folder/'spirob_physics_model.xml',params=params,links=['link_001','link_002','link_021'])
@@ -123,7 +120,7 @@ def test_preview_displays_the_requested_section():
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
-    from preview import draw_flat_section
+    from tools.preview import draw_flat_section
     p=resolve_section_params(two_params(),base_thickness_mm='20',hex_section=True)
     g=from_params(p); fig,ax=plt.subplots()
     draw_flat_section(ax,g.units[0].realized_width_m/2,p)

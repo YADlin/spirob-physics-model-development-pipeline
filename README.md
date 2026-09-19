@@ -1,323 +1,348 @@
-# SpiRob Physics Model Pipeline
+# SpiRob generator
 
-Generate canonical spiral geometry, shared simulation meshes, MuJoCo MJCF,
-and whole-robot STEP/STL fabrication models. Two cables use a flat section;
-three or more cables use the existing n-lobe construction.
+Design a cable-driven SpiRob, inspect its geometry, and generate a **MuJoCo model** or **fabrication CAD** from one JSON file. Two cables use flat rectangular/hex links and hinge joints; three or more use notched n-lobe links and ball joints.
 
-**Thickness update:** two-cable thickness now varies linearly within and between
-links. See [continuous thickness and inspection](docs/LINEAR_THICKNESS.md) for
-the current behavior; it supersedes older per-link thickness descriptions below.
+![Actual generated 2-, 3- and 4-cable SpiRob surfaces](docs/figures/spirob-2-3-4.png)
 
-Read the [parameter manual](docs/PARAMETER_MANUAL.md), also available as an
-[offline HTML manual](docs/PARAMETER_MANUAL.html), for units, defaults, base/tip
-thickness, section shapes, CAD options, dynamics and all build/tool flags.
+**Start here:** [Install and build](#install-and-build) · [Interactive designer](#interactive-designer) · [Parameters](#parameters) · [Geometry equations](#geometry-equations) · [Dynamics and contact](#dynamics-and-contact) · [Tools](#tools) · [GitHub hosting](#github-hosting) · [Verification and layout](#verification-and-layout)
 
-## Install
+## Install and build
 
-Use a dedicated Python 3.12 environment with uv (repairs tested on 3.12.13/14):
+The supported environment is **Python 3.12**, managed by [uv](https://docs.astral.sh/uv/getting-started/installation/). Run commands from the repository root. `uv sync` creates `.venv`; activation is optional. Dependencies, including CAD and MuJoCo, are locked in `uv.lock`.
 
 ```bash
-uv python install 3.12
-uv venv --python 3.12 .venv
-source .venv/bin/activate
-uv pip install -r requirements-fabrication.txt
+git clone git@github.com:YADlin/spirob-physics-model-development-pipeline.git
+cd spirob-physics-model-development-pipeline
+git switch fix/consolidation-cad-workflows
+uv sync --locked
+uv run python tools/designer.py
 ```
 
-On Windows use `.venv\Scripts\activate` instead of `source`. The desktop GUI
-requires Tk: on Debian/Ubuntu install the OS package `python3-tk`; standard
-Windows CPython normally includes it. WSL requires a working graphical display.
-`requirements.txt` installs the simulation pipeline; `requirements-fabrication.txt`
-adds CAD mesh validation, STL splitting and CAD preview dependencies.
+The review branch is shown above; after it is merged, use `main`. The designer opens at **http://127.0.0.1:8765**. Select a preset, adjust its parameters, then download JSON or generate a model ZIP. Stop the server with Ctrl+C after a build finishes.
 
-## First build
+For a terminal build and viewer:
 
 ```bash
-python build.py --params examples/params-two-cable.json --no-preview --output-dir build/two-cable --cad
+uv run python build.py --params examples/params-three-cable.json --no-preview --output-dir build/three
+uv run python -m mujoco.viewer --mjcf build/three/spirob_physics_model.xml
 ```
 
-Output:
-
-| File | Meaning | Units |
-|---|---|---|
-| `Geom_Data_CSV/Spirob_geom_data.csv` | Canonical link geometry | m |
-| `meshes/link_template.stl` | Shared complete-link mesh; MJCF scales it per link | m |
-| `meshes/link_001.stl` | Separate partial-base mesh, when present | m |
-| `spirob_physics_model.xml` | Compiled and checked MuJoCo model | m |
-| `build_params.json` | Geometry parameters with CLI section/thickness/timestep overrides | Same as input params |
-| `section_dimensions.json` | Two-cable base/tip and per-link width/centre/edge thickness | m |
-| `cad/spirob.step` | Full CAD solid, base at z=0, +Z toward tip | mm |
-| `cad/spirob.stl` | Full fabrication mesh; import into slicer as mm | mm |
-| `cad/spirob_cad_report.json` | Dimensions, topology checks, parameters and hashes | Explicit per field |
-
-The build uses a fresh staging directory, checks the complete mesh set, compiles
-MJCF, and publishes outputs after successful validation. A failed generation
-leaves existing outputs in place. Paths containing spaces are supported. All
-subprocesses use the interpreter that launched the build.
+For two-cable hex links with an explicit **20 mm base thickness**, STEP, printing STL and IGES:
 
 ```bash
-python -m mujoco.viewer --mjcf=build/two-cable/spirob_physics_model.xml
-python build.py --params examples/params-four-cable.json --no-preview --output-dir build/four-cable --cad
+uv run python build.py --params examples/params-two-cable-hex.json --base-thickness-mm 20 --cad --iges --no-preview --output-dir build/two
 ```
 
-## Optional six-sided two-cable section
+Every build compiles its XML before publishing outputs. Failed stages preserve the previous output. Rebuilding without CAD removes stale CAD from that output directory. The obsolete red `target` site is **absent from new XML**; regenerate old models to remove it there too.
+
+| Output under the chosen directory | Purpose / units |
+| --- | --- |
+| `spirob_physics_model.xml` + `meshes/` | Portable simulation model. Keep these together; simulation STL coordinates are **metres**. |
+| `build_params.json` | Input with resolved build/CLI overrides. Omitted dynamics values still use the documented preset. |
+| `Geom_Data_CSV/` | Intermediate geometry table; useful for auditing, not required by the viewer. |
+| `collision_summary.json` | Contact geometry counts, mass isolation and arena allocation. |
+| `section_dimensions.json` | Two-cable base/tip thickness and per-link taper dimensions. |
+| `cad/spirob.step`, `cad/spirob.stl` | Whole-robot manufacturing exports in **millimetres**, when CAD is enabled. |
+| `cad/spirob.iges` | Optional **surface** interchange in mm; STEP is preferred for solids. |
+| `cad/spirob_cad_report.json` | CAD validity, volumes, bounds, hashes and round-trip results. |
+| `spirob_aligned.mjb` | Optional compiled frame-alignment experiment tied to MuJoCo 3.3.5. |
+
+A fabrication STL and a simulation STL have different units and purposes. Do not send a metre-scale simulation mesh straight to a slicer expecting millimetres.
+
+## Interactive designer
+
+![The SpiRob browser designer](docs/figures/designer-desktop.png)
+
+The same interface runs locally or as a static GitHub Pages site. No JavaScript framework, CDN or web account is required to explore a design.
+
+1. Choose a **2-hex, 2-rectangular, 3-, 4- or 6-cable preset**. Other cable counts can be entered.
+2. Change length, tip width, taper and segment angle. The **front/side profiles** distinguish requested length from assembled length.
+3. Click a link or use **Inspect link**. Move **Section station** to see a real XY slice, rather than a misleading full-link projection. Toggle **Construction** for the polygon and notch cutters.
+4. Expand **Section** or **Fabrication** to change thickness, notch, fill, core and hole dimensions. The cross-section reports sampled XY wall clearance. Toggle dimensions, routes and core separately to control clutter.
+5. Inspect the polar construction, back-calculated constants, gain plots and rotatable 3D surface. **Front**, **End** and **Fit** provide predictable camera views.
+6. Download `params.json`. With the local builder connected, **Generate & download model** runs the Python pipeline and returns the XML, meshes, optional CAD and reports in one ZIP.
+
+The browser remembers the last valid design locally. Importing a JSON file restores its settings; invalid values disable export/build and leave the previous valid preview visible with an error. Length inputs display **mm** while JSON uses metres. Optional omitted settings are identified in the controls.
+
+The 3D view is a sampled design preview, not a contact simulation. Fabrication core/channel overlays explain parameters; the generated CAD is authoritative for the fused/drilled solid. Root world pose is applied in MuJoCo, not in the local design views. Interactive previews and browser builds are bounded to **32 cables / 400 links**; the terminal generator has no 32-cable limit.
+
+**GitHub Pages is static hosting:** it serves the previews and JSON export but cannot execute this Python/OpenCascade pipeline. Exact exports work through the local builder or the manual GitHub Actions workflow described below. See [GitHub Pages documentation](https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages).
+
+## Parameters
+
+Start with an example and edit it, or use the designer. The schema in [`site/parameters.schema.json`](site/parameters.schema.json) supplies field descriptions, units and basic validation to both Python and the website. Unknown keys, invalid types and non-finite numbers are rejected.
+
+**Precedence:** explicit CLI option → JSON → generator/preset default. Schema `default` entries describe initial designer values; they do not silently insert missing keys into an imported file. The tables distinguish example values from omitted-key behavior where it matters.
+
+### Geometry and sections
+
+![Annotated geometry, thickness and spiral parameters](docs/figures/geometry-parameters.png)
+
+| JSON key | Example / default | Meaning and effect |
+| --- | --- | --- |
+| `L` | `0.22628` m; required | Continuous centre-spiral arc length before straightening. The assembled chain follows chords and is slightly shorter. |
+| `d_tip` | `0.007139` m; required | Nominal width between spiral boundaries at θ=0. It is not necessarily the final measured tip width after segmentation. |
+| `phi_deg` | `6.3`; required | Full included taper angle φ, **0 < φ < 45°**. Increasing it widens the base at a fixed length/tip input. |
+| `Delta_theta_deg` | `30.78`; required | Curled angular span per complete link, **0 < Δθ < 180°**. Larger values mean fewer links; it is not a joint limit. |
+| `n_cables` | `3`; required | Integer ≥2. Selects flat hinge links for 2, n-lobe ball-joint links for n≥3. |
+| `terminal_unit_policy` | `exact_requested_length` | Preserve requested arc length and allow a partial base; `whole_units` extends the arc to the next complete link. An excessively short partial base is rejected; use whole units or adjust L/Δθ. |
+| `tendon_inward_shift` | `0.0015` m; required | Inward routing-site offset; **0 ≤ shift < d_tip/2**. The distal site also receives a taper correction. This is not a guaranteed distance from a drilled hole to the actual outer surface. |
+| `base_thickness_m` | `null` / auto | **2-cable only.** Full Y centre thickness at the base mounting plane. Auto equals base width; a number fixes that base thickness. Tip thickness is derived, not independently entered. |
+| `thickness_profile` | `linear` | **2-cable only.** One continuous thickness law within and between links. `stepped` is the legacy constant-thickness-per-link alternative. |
+| `flat_section` | `rectangular` | **2-cable only.** `hex` adds two centre ridges, giving a six-sided section; it is generally not a regular hexagon. |
+| `hex_edge_ratio` | `0.75` | Hex only; **0 < ratio < 1**. Edge/centre thickness ratio at the link's full-width section. Sloped end-face clipping also changes a slice near a joint. |
+| `nlobe_t` | `0.5` | **n≥3.** Polygon fill, **0–1**. Sets polygon circumradius relative to the revolved reference radius; changing it changes the lobe outline. |
+| `notch_factor` | `0.25` | **n≥3.** Notch radius / half polygon-side length, **0–0.4**. Zero means no notch. Convex contact bridges these concavities. |
+| `show_preview` | `false`; required | Open the optional desktop 2D approval window during a CLI build. `--no-preview` and the local browser builder suppress it. |
+
+![Effects of hex edge ratio, notch ratio and polygon fill](docs/figures/section-parameters.png)
+
+For two cables the thickness law is
+
+$$T(z)=T_\mathrm{base}\frac{z_\mathrm{apex}-z}{z_\mathrm{apex}-z_\mathrm{base}}.$$
+
+The virtual apex continues the geometric sequence beyond the tip. This gives a linear taper and preserves similarity of complete links, so they can share an STL. The partial base gets its own STL. See `section_dimensions.json` for the resulting **base and tip** dimensions.
+
+### Placement and dynamics: `post_gen`
+
+These keys belong inside a `"post_gen": {...}` object. They are optional; examples explicitly set them for reproducibility.
+
+| Key | Example | Meaning / omitted-key behavior |
+| --- | --- | --- |
+| `robot_pos` | `[0,0,0.22628]` m | Root body world position. If omitted, use the generated root position. |
+| `robot_quat` | `[0,0,-1,0]` | Root orientation `[w,x,y,z]`, nonzero. The example points local +Z down. If omitted, use the generated orientation. |
+| `joint_stiffness_base` | `0.2` N·m/rad | K₀ coefficient of the gain law below. Omitted uses the chosen preset. |
+| `joint_damping_base` | `0.01` N·m·s/rad | D₀ coefficient; omitted uses the preset. |
+| `joint_beta` | `1.03` | Positive gain-decay βⱼ, independent of geometric βg. Above 1 gives decreasing gains; 1 gives constant gains. |
+| `first_joint_stiffness` | `100` N·m/rad | Override j_001 only. If omitted, j_001 follows K₀. A large spring approximates a fixed mounting; it is not a weld. |
+| `first_joint_damping` | `50` N·m·s/rad | Override j_001 only. If omitted, it follows D₀. |
+| `timestep` | `0.0001` s | Positive integration step. All supplied examples set this explicitly. Omitted uses the preset, which can be much coarser. |
+| `tip_site_pos` | `[0,0,0.005]` m | Optional `tip_site` location in the **last body's local frame**; not a world position or guaranteed physical tip. Omitted means no tip site. |
+
+`post_gen.target_site_pos` is retired: imports remove it with a notice and no target is emitted. The `--show-target-marker` flag has been removed.
+
+### Export, collision and fabrication: `build`
+
+These keys belong inside a `"build": {...}` object. The two example build entries are `collision_mode: "convex"` and `mesh_layout: "shared"`; other entries can be added in JSON or selected in the designer.
+
+| Key | Default / example | Meaning |
+| --- | --- | --- |
+| `collision_mode` | Examples: `convex` | One massless convex hull per link. Alternatives: `mesh`, `capsule`, `compound`; comparison below. Omitted: mesh, or capsule with safe preset. |
+| `mesh_layout` | `shared` | Reuse a complete-link STL plus a partial-base STL where needed. `individual` creates one mesh file per link. Names inside XML remain stable. |
+| `physics_preset` | `default` | `default`, `safe`, `fast`, `high`. Selects the legacy dynamics/contact defaults; explicit overrides still win. |
+| `collision_margin_m` | `null` / auto | Nonnegative activation margin in metres. Auto is **0 for convex/compound**, otherwise the preset value. |
+| `collision_corner_radius_ratio` | `0.04` | Corner radius / half-width for legacy compound colliders only. Does not affect convex. |
+| `arena_memory_mib` | `null` / auto | Positive integer native MuJoCo arena size. Auto is 128 MiB for compound, compiler default otherwise. More memory does not fix unstable dynamics. |
+| `plain` | `false` | Advanced revolved circular-section comparison; bypasses flat/n-lobe cutters. Incompatible with convex/compound and explicit flat-section settings. |
+| `align_geom_frames` | `false` | Additional version-specific aligned `.mjb`. Ordinary XML still uses MuJoCo's mesh principal frames. Usually leave off. |
+| `cad` | `false` | Enable whole-robot STEP and mm STL export plus validation report. |
+| `cad_profile` | `fabrication` | `fabrication` fuses a central elastic core and optional channels. `simulation` assembles the rigid link surfaces; it is not necessarily one printable part. |
+| `neck_width_mm` | `1` mm | Fabrication elastic core **X width for 2 cables**, **cylinder diameter for n≥3**. Must be positive. It is not the link Y thickness. |
+| `cable_hole_diameter_mm` | `0` mm | Fabrication channel diameter; 0 leaves CAD undrilled. Positive diameters require fabrication profile. Does not change tendon display width or simulation mass. |
+| `fuse_cad` | `false` | Fuse simulation-profile solids where possible. Fabrication is already fused. Requires CAD. |
+| `iges` | `false` | Also export IGES surfaces, in mm. Requires CAD; STEP remains the solid exchange format. |
+
+![Core and cable-hole dimensions for two- and three-cable SpiRobs](docs/figures/fabrication-parameters.png)
+
+**What “elastic layer thickness” means here:** the implemented control is `neck_width_mm`, the finite central ligament/core. There is **no separate parameter for an axial elastic layer between rigid elements**. Changing this CAD dimension does not automatically identify a new spring/damping law. The browser labels the dimension that the generator actually supports.
+
+Cable-hole margin depends on the selected link, slice, notch shape, taper and hole diameter. The browser's XY clearance estimate is useful for locating thin walls, but is not a 3D minimum-wall or print-strength certification. Check the exported solid before printing.
+
+### Compatibility inputs and command-line help
+
+| Retained input | Purpose |
+| --- | --- |
+| `flat_thickness_ratio` | Old two-cable base thickness/width ratio, 0.05–1; mutually exclusive with `base_thickness_m`. Prefer absolute base thickness. |
+| `flat_edge_ratio` | Old fabrication lens edge ratio, (0,1]; not the current hex-section control. |
+| `taper_angle_deg` | Legacy alias; must agree with `phi_deg`. Use `phi_deg` in new files. |
+| `build.flat_thickness_m`, `build.flat_edge_ratio` | Legacy stepped fabrication-lens overrides. Not supported with hex/linear thickness. |
+| `_comment` | Optional explanatory string at root, in `post_gen`, or in `build`. |
+
+Every terminal flag has help text:
 
 ```bash
-uv run python build.py --params examples/params-two-cable.json --hex-section --hex-edge-ratio 0.75 --base-thickness-mm auto --timestep 0.0001 --collision-mode mesh --collision-margin-m 0 --no-preview --cad --cad-profile simulation --output-dir build/hex-review
-uv run python tools/inspect_section.py --mjcf build/hex-review/spirob_physics_model.xml --out build/hex-review/cross_sections.png
+uv run python build.py --help
+uv run python tools/set_joint_gains.py --help
+uv run python tools/add_touch_sensors.py --help
 ```
 
-`--hex-section` gives a **full-width transverse XY slice** six sides: two centre ridges and
-short flat outer side walls. `--hex-edge-ratio` controls edge/centre thickness.
-Use `--base-thickness-mm 20` to set the **largest base link's centre thickness**
-to 20 mm at the mounting plane. Thickness then decreases linearly along Z,
-continuously across the joints. `--base-thickness-mm auto` (JSON
-`"base_thickness_m": null`) sets base thickness equal to base width.
-The supplied geometry gives 31.087574 mm at the base and 6.923663 mm at the tip.
-Use `--thickness-profile stepped` to reproduce the former constant-per-link solids.
-Omitting the flag
-and the `flat_section` parameter keeps the existing rectangular simulation
-section. The equivalent saved configuration is `examples/params-two-cable-hex.json`.
+CLI names use hyphens: e.g. `--collision-mode convex`, `--arena-memory-mib 128`, `--neck-width-mm 1`. `--base-thickness-mm 20` converts mm to the JSON metre value; `--base-thickness-mm auto` restores thickness=width. `--hex-section` selects hex, `--safe/--fast/--high` select a preset, and `--nlobe` restores the cable-count-driven section after `build.plain`. `--no-cad`, `--no-iges`, `--no-fuse-cad`, and `--no-align-geom-frames` can disable JSON options. `--noclean` is a retained no-op: builds always use fresh staging.
 
-The new [section guide](docs/HEX_SECTION.md) covers inspection, inertia auditing,
-and fabrication export. Compound colliders currently fit the stepped rectangular
-section and are rejected for linear thickness or hex sections pending their refit.
+## Geometry equations
 
-## Collision shapes and body inertia
+The original design principle is the logarithmic spiral **r(θ)=a exp(bθ)**, described by Wang, Freris and Wei in [SpiRobs: Logarithmic Spiral-shaped Robots for Versatile Grasping Across Scales](https://arxiv.org/abs/2303.09861). This generator solves for constants from more direct design inputs; the website displays their current values.
 
-Every generated link has an explicit `<inertial>` element derived from its mesh.
-Collision proxies have zero mass. The final compiler uses `inertiafromgeom="auto"`,
-which respects those explicit inertias while allowing new task objects to infer
-their own. Regenerate after changing geometry or material density; changing a
-collider alone does not change a link's mass, centre of mass or inertia tensor.
+Let $E=e^{2\pi b}$. In this repository's convention:
 
-For the **two-cable flat section**, use boxes along the sloping faces and cylinders
-at the corners:
+$$r_\mathrm{in}(\theta)=ae^{b\theta},\quad r_\mathrm{out}(\theta)=ae^{b(\theta+2\pi)},\quad r_c(\theta)=\frac{a(E+1)}{2}e^{b\theta}.$$
+
+$$\tan(\phi/2)=\frac{b(E-1)}{\sqrt{1+b^2}(E+1)},\qquad a=\frac{d_\mathrm{tip}}{E-1}.$$
+
+$$A=\frac{\sqrt{1+b^2}\,a(E+1)}{2b},\qquad L=A(e^{bq_0}-1),\qquad q_0=\frac{\ln(1+L/A)}{b}.$$
+
+Angles in these equations are **radians**. Complete units span Δθ and have geometric size ratio $\beta_g=e^{b\Delta\theta}$. The generator straightens each centre chord, reverses tip-to-base construction into base-to-tip numbering, and corrects a partial base's mounting face. Hence requested continuous length, discrete length and measured end widths differ. Whole-unit policy rounds the angular span upward before assembly.
+
+For n-lobe links, the cutter has polygon circumradius $R_p=R[1+t(\sec(\pi/n)-1)]$ and notch radius $r_n=\text{notch_factor}\,R_p\sin(\pi/n)$. The actual slice also includes axial draft and the revolved slit envelope; the website applies both.
+
+## Dynamics and contact
+
+![Stiffness and damping curves for several decay assumptions](docs/figures/joint-gain-law.png)
+
+For base-to-tip joint number $i=1,\ldots,N$:
+
+$$K_i=K_0/\beta_j^{3(i-1)},\qquad D_i=D_0/\beta_j^{3(i-1)}.$$
+
+This is an **assumed exponential law** with the same exponent for damping and stiffness. It is not fitted automatically to the printed material or inferred from CAD. βⱼ is independent of geometric βg. There is no linear joint-gain mode; the linear option described earlier refers to **link thickness**. The example's j_001 overrides are applied after this law. For ball joints, damping applies to their three rotational degrees of freedom.
+
+Legacy presets are retained, with their limitations visible:
+
+| Preset | Timestep if omitted | Integrator | K₀ / D₀ if omitted | Motor control range | Margin for mesh/capsule |
+| --- | --- | --- | --- | --- | --- |
+| default | 0.002 s | implicit | 0.2 / 0.01 | −10 to 0 | 0.001 m |
+| safe | 0.001 s | implicit | 0.2 / 0.2 | −5 to 5 | 0.0002 m |
+| fast | 0.005 s | implicit | 0.01 / 0.001 | −10 to 10 | 0.002 m |
+| high | 0.0005 s | RK4 | 0.1 / 0.02 | −5 to 5 | 0.0005 m |
+
+**All current examples explicitly use 0.0001 s.** Their explicit K₀/D₀ also override preset gains. Preset names are not stability or physical-accuracy guarantees. Keep your known tolerable timestep and test the intended force/load range. With the default motor convention, negative control tensions the tendon; the symmetric legacy ranges also permit the opposite sign. Cable motors are idealized, not a hardware motor/cable model.
+
+| Contact mode | Use / approximation |
+| --- | --- |
+| `convex` | Recommended starting point in examples: one massless contact hull per link, independent visual mesh and explicit inertia. Supports flat and n-lobe links. Bridges n-lobe concave notches. Multiple contact points can still be necessary for a broad face. |
+| `mesh` | MuJoCo mesh contact uses a convex hull; it does not reproduce arbitrary concavity. Retains older contact settings. |
+| `capsule` | Cheap rounded approximation, which can differ noticeably from flat faces. |
+| `compound` | Legacy boxes/cylinders for **stepped rectangular two-cable links only**. More geom pairs and contacts; retained for comparisons. |
+
+One hull per link reduces the number of contact geoms; it does **not** guarantee one contact or constraint per link. Dense folded configurations can still produce many contacts. Inspect force aggregation and solver statistics before increasing memory. Viewer `100% (76.2%)` describes requested versus achieved real-time speed; it is not an accuracy score.
+
+Mass, COM and inertia are frozen into explicit `<inertial>` elements from the **simulation visual meshes** at generation time, using uniform density **1200 kg/m³**. Collision proxies have zero mass. Fabrication ligaments, holes, print infill and material variation are not automatically incorporated into this model. Geometry/density changes require regeneration; measured hardware properties require separate calibration. `audit_inertia.py` compares the assumptions transparently.
+
+MuJoCo can rotate mesh geom frames to principal axes during compilation. This does not by itself rotate the physical surface incorrectly. Body/site naming is retained: `link_NNN`, `j_NNN`, `cC_NNN_s1/s2`, `cable_C`, `motor_cC`, and optional `tip_site`. See [MuJoCo's mesh documentation](https://mujoco.readthedocs.io/en/3.3.5/XMLreference.html#asset-mesh).
+
+## Tools
+
+All tools are included in the repository. Run them from the repository root. XML editing tools write a **separate compiled output** and rebase asset paths; keep the original meshes available. Use `--help` for complete options.
+
+| Tool | When it helps |
+| --- | --- |
+| `tools/designer.py` | Interactive design and exact local model/CAD ZIP generation. `design_gui.py` is a compatibility launcher for this interface. |
+| `tools/set_joint_gains.py` | Tune one stiffness/damping coefficient and decay factor across joints; always preserves j_001 and optional extra exclusions. |
+| `tools/add_touch_sensors.py` | Add named spherical touch regions near cable routes while preserving existing sensors and physical properties. |
+| `tools/audit_inertia.py` | Compare compiled mass/COM/inertia against the triangle mesh, independent simulation CAD, and optionally an older XML. |
+| `tools/inspect_collision.py` | Show CAD and contact proxies, report counts/mass separation, or run a bounded actuator/contact stress test. |
+| `tools/inspect_collision_surface.py` | Plot and quantify the visual-surface versus collision-hull difference, especially bridged n-lobe notches. |
+| `tools/inspect_contact_forces.py` | Sum world-frame contact forces and moments on a body or within a chosen body-local spherical region. |
+| `tools/inspect_section.py` | Plot actual compiled mesh projections and 3D views in body coordinates. Its end-on projection is not a planar slice. |
+| `tools/inspect_taper.py` | Check two-cable thickness continuity against the requested law; optionally compare an older XML. |
+| `tools/multi_array.py` | Assemble a circular array of robots with namespaced names and shared assets. |
+| `fabrication/part_splitter.py` | Split STEP/STL to an axial printer span or explicit cuts; records part bounds and volumes. It does not add assembly keys or restore flexure continuity. |
+| `tools/preview.py` | Optional desktop 2D geometry approval window used by `show_preview`. |
+| `tools/inspect_model.py` | Advanced body/geom-frame inspection and optional compiled alignment. |
+| `tools/geometry_audit.py` | Advanced requested/discrete length and geometry-policy report. |
+| `tools/benchmark_collision.py` | Developer comparison of collider contact counts, timings and dense poses. Not a hardware validation. |
+
+### Change gains and preserve the base
 
 ```bash
-python build.py --params examples/params-two-cable.json --no-preview --collision-mode compound --output-dir build/two-cable
-python tools/inspect_collision.py --mjcf build/two-cable/spirob_physics_model.xml --view
+uv run python tools/set_joint_gains.py --mjcf build/three/spirob_physics_model.xml --out build/three/tuned.xml --stiffness 0.15 --damping 0.008 --beta 1.03 --json build/three/gain_changes.json
+uv run python -m mujoco.viewer --mjcf build/three/tuned.xml
 ```
 
-The inspection view shows translucent blue CAD and orange collision primitives
-at a frozen pose. Toggle geom groups 1 and 3 to compare. The standard MuJoCo
-viewer also opens this XML directly; group 3 is hidden by default.
+By default, the coefficient is anchored at the generator's i=1, while j_001 is preserved. Therefore j_002 gets coefficient/β³. Add `--anchor first-flexible` if the entered value should be the actual value at j_002. The tool verifies unchanged inertia, geometry, sites and actuator settings. For a permanent rebuild setting, also edit the corresponding `post_gen` values in your source JSON.
 
-`--collision-mode capsule` retains the capsule approximation with corrected
-inertia handling; `--collision-mode mesh` remains the default. Capsule/mesh modes
-and shared STLs support other cable counts. Compound mode currently requires
-two cables with the rectangular section, without `--plain`. `--safe` still chooses capsules unless explicitly
-overridden by `--collision-mode`.
-
-`--collision-corner-radius-ratio` defaults to `0.04` of each link's half-width.
-Smaller values fit sharp corners more closely but need more boxes. Rounding is
-inward and does not change CAD. Compound mode defaults to zero contact margin;
-use `--collision-margin-m` to set a deliberate contact buffer. Other modes retain
-their preset margins unless this flag is supplied.
-
-The default `--mesh-layout shared` needs only a complete-link STL and, when
-present, a partial-base STL. Separate named MJCF assets apply each link's scale.
-Use `--mesh-layout individual` for consumers that directly open every
-`link_NNN.stl`. Link/body/site/tendon/actuator names remain unchanged. Copy the
-XML **and its meshes folder** when moving a generated robot.
-
-See [collision and shared-mesh validation](docs/COLLISION_AND_SHARED_MESHES.md)
-for the measured fit, contact checks and limitations.
-
-Compound builds now allocate 128 MiB of native MuJoCo arena memory to accommodate
-large contact sets. `--arena-memory-mib` overrides it. This addresses allocation
-capacity; extreme actuation can still become numerically unstable.
-
-The new [dynamics tools](docs/DYNAMICS_TOOLS.md) compare full inertia tensors
-against mesh/CAD references and edit the exponential joint gains while preserving
-the protected base. `tools/inspect_collision.py --stress` runs a bounded actuator
-test and reports contacts, arena usage and the first warning.
-
-## Simulation and fabrication geometry
-
-The simulation generator retains its existing link/site/tendon/actuator names,
-routing convention, stiffness, damping and collision settings. The partial base
-now has a flat mounting face and the same joint-facing slope as complete links.
-Its surface, mass/inertia and cable attachment heights intentionally change.
-Its width, backbone endpoints and the complete links retain their geometry.
-See [base and frame repair](docs/LINK_ORIENTATION_REPAIR.md) for validation.
-
-To inspect **aligned Geom axes** at a frozen pose:
+### Compare inertia in a useful frame
 
 ```bash
-python tools/inspect_model.py --mjcf build/two-cable/spirob_physics_model.xml --align-geom-frames --view
+uv run python tools/audit_inertia.py --mjcf build/three/spirob_physics_model.xml --params build/three/build_params.json --links link_001 link_002 link_021 --json build/three/inertia.json
 ```
 
-The viewer now starts with **Geom** frames. The opt-in alignment rebases actual
-compiled mesh coordinates while keeping their world surfaces and compiled body
-inertias. Without `--align-geom-frames`, the report and viewer show MuJoCo's
-original principal-axis frames. `--frames body` explicitly selects Body frames.
-The report checks actual Geom axes separately; its exit status is 1 if either
-the authored/body rest frames or the actual Geom axes fail alignment.
+Reports express the tensor **at the compiled COM, with axes parallel to the link body frame**. CAD/mesh tensors are shifted to that same point before comparison, and each reference COM is reported separately. MuJoCo's diagonal principal moments alone would not permit a meaningful element-by-element comparison with a differently rotated CAD tensor. The reference is homogeneous CAD, not a measurement of a printed part. Adjust link names for a different link count.
 
-**XML compilation always restores MuJoCo's principal-axis choice.** To retain
-aligned Geom axes in the standard viewer, export a compiled MJB:
+### Inspect contact geometry and forces
 
 ```bash
-python build.py --params examples/params-two-cable.json --no-preview --output-dir build/two-cable --align-geom-frames
-python tools/inspect_model.py --model build/two-cable/spirob_aligned.mjb --view
-# Run dynamics in the standard MuJoCo viewer (select Rendering > Frame > Geom):
-python -m mujoco.viewer --mjcf=build/two-cable/spirob_aligned.mjb
+uv run python tools/inspect_collision.py --mjcf build/three/spirob_physics_model.xml --view
+uv run python tools/inspect_collision.py --mjcf build/three/spirob_physics_model.xml --stress --controls -2 0 0 --seconds 2 --ramp-seconds 1 --json build/three/contact_stress.json
+uv run python tools/inspect_collision_surface.py --mjcf build/three/spirob_physics_model.xml --out build/three/contact_surfaces.png --json build/three/contact_surfaces.json
+uv run python tools/inspect_contact_forces.py --mjcf build/three/spirob_physics_model.xml --body link_002 --seconds 2 --controls -2 0 0 --ramp-seconds 1 --json build/three/forces.json
 ```
 
-The optional MJB is for the pinned **MuJoCo 3.3.5**. Regenerate it after changing
-the robot; rebuilding without this option removes any older aligned MJB.
-Existing XML/STL generation and downstream naming are preserved. Consumers
-using geom-local axes must account for their changed convention; body/site
-conventions retain their existing meaning. See the
-[actual Geom-frame repair](docs/GEOM_FRAME_ALIGNMENT.md) for tests, limitations,
-and a Python loader example.
+For a region rather than the whole link, add `--point-local-m X Y Z --radius-m R`. A finite region aggregates nearby contacts; a mathematical point does not define a unique contact-force distribution. Reports state which body receives the force and the moment reference. No-contact states naturally return zero.
 
-The fabrication profile preserves the sloped segment faces and gaps. It adds a
-finite central flexure so the physical robot is one connected solid. The
-fabrication two-cable section is a piecewise planar lens, thick at its centre
-and thinner at its edges. These are manufacturing dimensions; they do not
-establish mechanical equivalence to the simulated joints.
+### Add touch readings
 
 ```bash
-# 1 mm central flexure, 1 mm cable channels following the canonical routed paths.
-python build.py --params examples/params-two-cable.json --no-preview --output-dir build/holed --cad --neck-width-mm 1 --cable-hole-diameter-mm 1
-
-# Assemble the existing simulation link geometry for inspection (may be disconnected).
-python build.py --no-preview --output-dir build/assembly --cad --cad-profile simulation
+uv run python tools/add_touch_sensors.py --mjcf build/three/spirob_physics_model.xml --out build/three/touch.xml --links 2 3 --offset-mm 1.8 --radius-mm 3
 ```
 
-| CAD setting | Default | Meaning |
-|---|---|---|
-| `--cad-profile` | `fabrication` | Connected fabrication solid or simulation assembly |
-| `--neck-width-mm` | 1 | Central ligament width for two cables; core diameter for n-lobe |
-| `--cable-hole-diameter-mm` | 0 | 0 leaves the model undrilled; positive drills routed cable channels |
-| `--flat-thickness-m` | derived | Centre thickness; default is `flat_thickness_ratio` × realized base width |
-| `--flat-edge-ratio` | 0.25 | Edge/centre thickness ratio; in (0,1] |
-| `--fuse-cad` | off | Union simulation assembly; fabrication is always fused |
+This adds regions named `cs_NNN_cC` and sensors named `touch_NNN_cC`. MuJoCo touch readings sum **normal contact-force magnitudes** within a region; they are not independent 3D force vectors. Overlapping regions may count the same contact. Use the contact-force inspector for vector forces and moments. See [MuJoCo touch sensor semantics](https://mujoco.readthedocs.io/en/3.3.5/XMLreference.html#sensor-touch).
 
-Example two-cable default centre thickness is **9.326 mm**, edge thickness
-**2.332 mm**, flexure width **1 mm**. These defaults are design starting points,
-not measured TPU stiffness or damping inputs. Hole clearance, wall thickness,
-base attachment, cable anchoring and print settings still need design review.
-The exporter checks valid CAD, connectivity, STEP re-import and a closed oriented
-fabrication STL; it cannot establish print quality or structural performance.
-
-The standalone exporter takes an existing CSV and checks it against the supplied
-parameters. Use the full build after editing geometry to regenerate the CSV.
+### Check thickness, make an array, or split a print
 
 ```bash
-python cad_export.py --params examples/params-two-cable.json --in build/two-cable/Geom_Data_CSV/Spirob_geom_data.csv --outdir build/cad-only
+uv run python tools/inspect_taper.py --mjcf build/two/spirob_physics_model.xml --params build/two/build_params.json --out build/two/taper.png --json build/two/taper.json
+uv run python tools/inspect_section.py --mjcf build/three/spirob_physics_model.xml --out build/three/sections.png
+uv run python tools/multi_array.py --in build/three/spirob_physics_model.xml --count 4 --radius-m 0.12 --out build/array.xml
+uv run python fabrication/part_splitter.py build/two/cad/spirob.step --axis z --max-span-mm 100 --file-units mm --out-dir build/two/print-parts
 ```
 
-## Fabrication splitting
+Fabrication exports use the robot's local +Z axis. Splitting reports geometric pieces, not a tested mechanical connection. Inspect where the core and cable channels intersect each cut.
+
+## GitHub hosting
+
+The site and workflows are included; publication is a separate repository action. You can review everything locally before merging.
+
+**After the workflow files reach the default branch:**
+
+1. In GitHub, open **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+2. Open **Actions → Deploy SpiRob designer → Run workflow**. Select the branch/ref you intend to publish.
+3. Use the URL reported by the deployment. For this repository, the normal project URL is `https://yadlin.github.io/spirob-physics-model-development-pipeline/`; it becomes available only after a successful deployment.
+4. To generate files on GitHub, open **Actions → Generate SpiRob model → Run workflow**. Choose a preset or paste a complete exported JSON. Enable `build.cad` and `build.iges` in that JSON for CAD/IGES. Download `spirob-model` from the completed run's artifacts (retained for 14 days).
+
+The website never asks for a GitHub token. Manual Actions builds require repository write access; public visitors can use JSON export and the local builder. A manual workflow must exist on the default branch before GitHub exposes it, even if a later run selects another branch. See [manual workflow requirements](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow) and [Pages custom workflows](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).
+
+## Verification and layout
 
 ```bash
-python fabrication/part_splitter.py build/two-cable/cad/spirob.step --axis z --max-span-mm 100 --build-volume-mm 256,256,256
-python fabrication/part_splitter.py build/two-cable/cad/spirob.stl --axis z --cut-positions-mm 80,160 --build-volume-mm 256,256,256
+uv sync --locked
+uv run pytest -q
 ```
 
-Cuts use coordinates in the file frame, expressed in mm. STEP/STL fabrication
-files default to mm; use `--file-units m` only for numeric metre meshes or legacy
-exports whose numeric coordinates were metres. Explicit cuts must be distinct,
-finite and inside the model. Choose cut positions or a maximum span, not both.
-
-Each format gets its own `<stem>_<format>_split` directory and JSON report.
-`--out-dir` selects another directory. Fit checks allow axis permutations and
-check bounding-box dimensions; they do not find arbitrary optimal rotations or
-allow for supports, clearance or assembly joints. The CLI fails if a requested
-build-volume check fails. Splitting adds no joining features or adhesive joints.
-
-## Multi-robot arrays
+For website development, Node 22+ is needed only for checks, not for serving the site:
 
 ```bash
-python tools/multi_array.py --in build/two-cable/spirob_physics_model.xml --count 6 --radius-m 0.12 --tilt-deg -20 --out build/arrays/six.xml
+uv run python dev/check_web_geometry.py
+uv run python dev/check_web_sections.py
+npm --prefix dev/browser ci
+cd dev/browser
+npx playwright install chromium
+cd ../..
+node dev/browser/check.mjs
+uv run python dev/render_readme_figures.py
 ```
 
-The array centre is the input robot base XY position. Height is retained. Each
-copy rotates about world Z and can tilt about its outward radial axis. Names and
-references in bodies, tendons, actuators, sensors, contacts and equality
-constraints are renamed with `_r0`, `_r1`, etc. World objects remain shared.
-Assets are shared through absolute paths so the output can move directories on
-the same machine; the array is not a self-contained transferable package.
-The result is compiled before being written. Unsupported includes, keyframes,
-plugins and structural expansion tags are rejected explicitly. Start from the
-single-robot generator output, not a whole mjlab task scene.
+The browser check exercises real controls, JSON persistence, mobile layout and a downloadable XML/STL/STEP/IGES build. Geometry parity compares 24 browser/Python configurations. README figures are reproducible from generated meshes and the same section equations; they are not hand-drawn approximations of hardware.
 
-The existing mjlab repository has its own asset adaptation and actuator settings.
-Keeping generator names stable does not mean copying a generated scene directly
-over a trained mjlab asset is an approved model migration.
+**Known test status:** one strict expected failure records the retained distal-tendon taper correction (F08), which does not produce a constant surface offset. It is not an unexplained crash; changing it needs a separate routing/physics decision. Sixteen skips cover unsupported n-cable compound combinations; three skips exclude non-legacy profiles from a deliberately legacy benchmark. These do not skip convex coverage. Unexpected failures or new skips still need investigation. See the [current branch audit](docs/engineering/BRANCH_AUDIT.md) for measured results and remaining work.
 
-## Desktop GUI
+| Location | Responsibility |
+| --- | --- |
+| `build.py`, `params.json`, `examples/` | User entry point and reproducible input configurations. |
+| `spirob/geometry.py`, `sections.py`, `collision.py` | Canonical geometry, cross-sections and collision construction. |
+| `spirob/pipeline/` | CSV, STL, MJCF and CAD stages; normally called through `build.py`. |
+| `spirob/parameters.py`, `xml_tools.py`, `mesh_assets.py` | Validation, safe XML editing and shared mesh mapping. |
+| `tools/`, `fabrication/` | User inspection/tuning tools and print splitting. |
+| `site/` | Static designer, shared parameter schema and browser presets. |
+| `tests/`, `dev/` | Regression tests, independent legacy reference and browser/figure checks. |
+| `docs/figures/`, `docs/engineering/` | README illustrations and detailed engineering history. This README is the current user guide. |
+| `build/` | Generated models, reports and downloads; ignored by Git. |
+| `pyproject.toml`, `uv.lock` | Supported environment and reproducible dependencies. |
 
-```bash
-python design_gui.py --params examples/params-two-cable.json --output-dir build/gui
-```
+The former root-stage scripts moved to `spirob/pipeline/`; use `build.py` instead of invoking those stages by path. `design_gui.py` now opens the browser designer. The old touch script and XML updater are replaced by the tools above. Duplicate DOCX/HTML/manual versions and requirements lists were removed. Old engineering reports are explicitly marked historical. Existing ignored root outputs are not deleted automatically; the new default build location is `build/spirob`.
 
-Edit parameters, update the geometry preview, then build. **Build + export
-STEP/STL** saves validated parameters and regenerates every stage. **Preview
-exported CAD** shows the actual last exported mesh and supports mouse rotation.
-The canonical preview is explicitly labelled as simulation geometry.
+For contributor changes, create a branch, run relevant tests, review `git diff`, commit source changes explicitly, and submit a PR. Do not commit generated model folders or `.venv`. The locked environment is intended for this repository checkout; installing an arbitrary standalone wheel is not the documented workflow.
 
-The GUI also offers file splitting, adjustable array count/radius, an output
-folder selector and **Inspect link frames**, which opens the frozen viewer with
-actual Geom axes aligned in memory. Work runs in one background job at a time;
-messages reach Tk through a main-thread queue. Invalid parameters stop the job.
-Desktop window execution remains unverified in the repair environment because
-it has no display server. Run the command above on the workstation as the GUI
-acceptance check.
+## Scope and attribution
 
-## Geometry parameters and physics
+This is an independent MIT implementation extending the geometry and naming conventions of this repository. The original design and research are credited to [Zhanchi Wang, Nikolaos M. Freris and Xi Wei](https://arxiv.org/abs/2303.09861); their [Open-Spiral-Robots repository](https://github.com/ZhanchiWang/Open-Spiral-Robots) remains a separate project with its own license. Its noncommercial source is not incorporated here. CADQuery/OpenCascade, MuJoCo and other dependencies retain their respective licenses.
 
-| Parameter | Meaning |
-|---|---|
-| `L` | Requested continuous uncoiled centreline length, m |
-| `d_tip` | Nominal tip width, m |
-| `phi_deg` | **Full included** taper angle, degrees; half-width slope = tan(phi/2) |
-| `Delta_theta_deg` | Angular span per segment, degrees |
-| `terminal_unit_policy` | `exact_requested_length` or `whole_units` |
-| `n_cables` | Integer >=2 |
-| `tendon_inward_shift` | Cable routing inward offset, m |
-| `nlobe_t`, `notch_factor` | Existing n-lobe section controls |
-| `flat_thickness_ratio` | Existing simulation thickness control; fabrication interpretation above |
-| `post_gen` | Existing pose, tip/target site and joint coefficient overrides |
-
-For the example parameters, the continuous length is 226.280 mm and the sum of
-straight segment chords is 223.655405 mm. The **2.624595 mm deficit is arc-to-chord
-shortening**, not an omitted terminal tip segment. Under `exact_requested_length`
-the effective continuous length equals the requested length; the partial unit
-is the **base** link. Fabrication coordinates translate the base to z=0 without
-stretching the chain. See [canonical geometry](docs/CANONICAL_GEOMETRY.md).
-If a partial base is too short to retain its width and nominal joint-facing
-slope, generation fails with an explanation; choose `whole_units` or adjust the
-length/angular span. It does not silently create an inverted surface.
-
-The legacy stiffness/damping law remains `k_i=k_base/beta^(3*i)` and
-`d_i=d_base/beta^(3*i)`, with first-joint overrides. At beta=1.03, index 20 has
-about **5.89 times** lower coefficients than index 0 before overrides. This is an
-assigned index law, not a calibrated beam law. `--safe`, `--fast`, and `--high`
-select the existing mutually exclusive presets; `--plain` retains the full
-revolution diagnostic mode. `--nlobe` remains a compatibility alias for the
-cross-section chosen by the cable count.
-
-## Verification and provenance
-
-```bash
-uv pip install -r requirements-dev.txt
-python -m pytest -q
-```
-
-See [repair findings and validation](docs/CONSOLIDATION_REPAIR.md), including the
-recovered bundle/commit discrepancy and CAD comparison. The primary calibration,
-training and evaluator work is outside this change.
-
-## Attribution
-
-This repository is MIT licensed; see [LICENSE](LICENSE). The added CAD,
-fabrication, array and GUI capabilities are inspired by the authors'
-[OpenSpiRobs toolkit](https://github.com/ZhanchiWang/Open-Spiral-Robots), which has
-its own PolyForm Noncommercial license. This repair uses this repository's own
-canonical geometry and independently written code; it does not import or copy
-the authors' implementation. The inherited feature commits describe themselves
-as clean-room implementations; that historical claim is not independently
-certified by these tests. Retain the appropriate SpiRobs publication citation in
-academic work.
+Remaining physical work includes experimental stiffness/damping identification, printed-part inertia calibration, and contact validation in deep concavities. The current n-lobe CAD path retains individual solid construction: extending shared-solid reuse showed small numerical volume differences and is deferred until independently resolved.

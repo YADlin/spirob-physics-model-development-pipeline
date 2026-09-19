@@ -31,7 +31,7 @@ def test_partial_base_has_flat_mount_and_nominal_joint_face(params):
 
 
 def test_corrected_surface_is_consistent_across_all_poses(params):
-    import helper_functions as hf
+    from tests.reference import helper_functions as hf
     from spirob.geometry import from_params
     g = from_params(params)
     straight = hf.straighten_pose(g.curled_quads())
@@ -74,7 +74,7 @@ def built_model(request, tmp_path_factory):
     params_path = folder/'params.json'
     params_path.write_text(json.dumps(p))
     result = subprocess.run([sys.executable, str(ROOT/'build.py'), '--params', str(params_path),
-                             '--no-preview', '--mesh-layout', 'individual', '--output-dir', str(folder/'out')],
+                             '--no-preview', '--collision-mode', 'mesh', '--mesh-layout', 'individual', '--output-dir', str(folder/'out')],
                             capture_output=True, text=True, encoding='utf-8')
     assert result.returncode == 0, result.stdout + result.stderr
     model = mj.MjModel.from_xml_path(str(folder/'out'/'spirob_physics_model.xml'))

@@ -89,15 +89,15 @@ def contact_report(model, data, body_name=None, point_local_m=None, radius_m=Non
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--mjcf', required=True)
+    parser.add_argument('--mjcf', required=True, help='Input standalone MuJoCo XML, including its associated mesh assets')
     parser.add_argument('--body', help='One body, e.g. link_002; default: all SpiRob links')
-    parser.add_argument('--point-local-m', nargs=3, type=float)
-    parser.add_argument('--radius-m', type=float)
+    parser.add_argument('--point-local-m', nargs=3, type=float, help='Region centre in the selected body frame: x y z in metres')
+    parser.add_argument('--radius-m', type=float, help='Spherical force aggregation region radius, in metres')
     parser.add_argument('--state-npz', help='Optional NumPy archive with qpos, qvel, ctrl arrays')
     parser.add_argument('--seconds', type=float, default=0., help='Run from initial/loaded state before reporting')
     parser.add_argument('--controls', nargs='+', type=float, help='Target controls in XML actuator order')
-    parser.add_argument('--ramp-seconds', type=float, default=0.)
-    parser.add_argument('--json', required=True)
+    parser.add_argument('--ramp-seconds', type=float, default=0., help='Duration of a linear control ramp, in simulated seconds')
+    parser.add_argument('--json', required=True, help='Write the numeric inspection report to this JSON file')
     args = parser.parse_args()
     try:
         model = mujoco.MjModel.from_xml_path(str(Path(args.mjcf).resolve()))

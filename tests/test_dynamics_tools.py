@@ -157,7 +157,7 @@ def test_bounded_stress_reports_and_rejects_unclamped_targets(compound):
     model = mujoco.MjModel.from_xml_path(str(compound))
     report = stress_report(model, [0., 0.], seconds=.05, ramp_seconds=0.)
     assert report['status'] == 'passed'
-    assert report['completed_steps'] == 25
+    assert report['completed_steps'] == 500
     assert report['arena_allocated_bytes'] == 128*2**20
     with pytest.raises(ValueError, match='ctrlrange'):
         stress_report(model, [-100, 0])

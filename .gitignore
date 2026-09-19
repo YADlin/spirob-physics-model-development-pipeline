@@ -27,12 +27,8 @@ build/
 build_manifest.json
 /build_params.json
 
-# Phase 2: local environment / tooling files that are not part of the project.
-# Listed explicitly so they cannot be committed by accident.
+# Local interpreter preference; supported Python is declared in pyproject.toml.
 .python-version
-pyproject.toml
-uv.lock
-main.py
 
 # Test cache
 .pytest_cache/
@@ -40,3 +36,13 @@ MUJOCO_LOG.TXT
 
 /section_dimensions.json
 /collision_summary.json
+
+# Build/runtime reports
+outputs/
+*.egg-info/
+.ruff_cache/
+playwright-report/
+test-results/
+
+# Browser developer dependencies
+node_modules/

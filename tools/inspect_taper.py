@@ -96,13 +96,13 @@ def inspect(xml_path, params, out, *, comparison=None, show=False, tolerance_mm=
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--mjcf',required=True)
+    parser.add_argument('--mjcf',required=True, help='Input standalone MuJoCo XML, including its associated mesh assets')
     parser.add_argument('--params',required=True,help='Matching build_params.json')
     parser.add_argument('--comparison-mjcf',help='Optional previous XML with the same XZ geometry')
-    parser.add_argument('--out',default='thickness_taper.png')
+    parser.add_argument('--out',default='thickness_taper.png', help='Output file for the generated plot or model')
     parser.add_argument('--json',help='Save measured thicknesses and continuity errors')
-    parser.add_argument('--tolerance-mm',type=float,default=1e-4)
-    parser.add_argument('--show',action='store_true')
+    parser.add_argument('--tolerance-mm',type=float,default=1e-4, help='Maximum allowed thickness discontinuity in millimetres')
+    parser.add_argument('--show',action='store_true', help='Open the generated plot in a desktop window')
     args=parser.parse_args()
     try:
         report=inspect(args.mjcf,json.loads(Path(args.params).read_text()),args.out,

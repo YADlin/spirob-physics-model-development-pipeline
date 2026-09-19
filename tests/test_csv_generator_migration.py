@@ -32,8 +32,8 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
 sys.path.insert(0, _ROOT)
 
-import helper_functions as hf  # noqa: E402
-import spirob_csv_generator as gen  # noqa: E402
+from tests.reference import helper_functions as hf  # noqa: E402
+from spirob.pipeline import spirob_csv_generator as gen  # noqa: E402
 from spirob.geometry import TerminalUnitPolicy, from_params  # noqa: E402
 
 ABS_M = 1e-12
@@ -71,7 +71,7 @@ def _rows(path):
 
 def test_generator_no_longer_derives_the_spiral():
     """The duplicated b / a / q0 / pose calculations must be gone."""
-    src = _read_text(os.path.join(_ROOT, "spirob_csv_generator.py"))
+    src = _read_text(os.path.join(_ROOT, "spirob/pipeline/spirob_csv_generator.py"))
     for symbol in ("solve_b_for_phi", "generate_spiral_pose",
                    "straighten_pose", "Invert_pose"):
         assert symbol not in src, (
@@ -82,7 +82,7 @@ def test_generator_no_longer_derives_the_spiral():
 
 
 def test_generator_imports_the_canonical_model():
-    src = _read_text(os.path.join(_ROOT, "spirob_csv_generator.py"))
+    src = _read_text(os.path.join(_ROOT, "spirob/pipeline/spirob_csv_generator.py"))
     assert "from spirob.geometry import" in src
     assert "from_params" in src
 
@@ -95,7 +95,7 @@ def test_generator_still_exposes_validate_params():
 
 def test_csv_writer_shim_is_still_the_serialiser():
     """helper_functions remains necessary, but only for CSV serialisation."""
-    src = _read_text(os.path.join(_ROOT, "spirob_csv_generator.py"))
+    src = _read_text(os.path.join(_ROOT, "spirob/pipeline/spirob_csv_generator.py"))
     assert "generate_cable_sites_csv_zrot_from_P" in src
 
 
@@ -293,7 +293,7 @@ def test_generator_cli_runs_and_reports_both_policies(params, tmp_path):
             json.dump(dict(params, terminal_unit_policy=policy), f)
         out = tmp_path / f"{policy}.csv"
         proc = subprocess.run(
-            [sys.executable, "spirob_csv_generator.py",
+            [sys.executable, "spirob/pipeline/spirob_csv_generator.py",
              "--params", str(pfile), "--out", str(out), "--yes"],
             cwd=_ROOT, capture_output=True, text=True, encoding="utf-8", env=child_env,)
         assert proc.returncode == 0, proc.stderr

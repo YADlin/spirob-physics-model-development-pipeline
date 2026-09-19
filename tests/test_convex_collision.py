@@ -9,7 +9,7 @@ import mujoco
 import numpy as np
 import pytest
 import trimesh
-from csv2xml import MJCFConfig, write_mjcf_from_sites_csv
+from spirob.pipeline.csv2xml import MJCFConfig, write_mjcf_from_sites_csv
 from spirob.geometry import from_params
 from tools.benchmark_collision import benchmark, isolated_patch
 from tools.inspect_collision import collision_report
@@ -48,7 +48,7 @@ def test_one_collider_shared_files_and_unchanged_dynamics(convex):
     assert report['total_link_contact_geoms'] == report['links'] == 21
     assert set(report['contact_geoms_per_link'].values()) == {1}
     assert report['all_proxies_zero_mass'] and report['nativeccd'] and report['multiccd']
-    assert report['target_site_retained'] and not report['target_marker_visible']
+    assert not report['target_site_retained'] and not report['target_marker_visible']
     assert report['max_contact_margin_m'] == 0
     assert len(report['source_stl_files']) == len(list((folder/'meshes').glob('*.stl'))) == 2
     for attr in ('body_mass','body_ipos','body_iquat','body_inertia','jnt_stiffness','dof_damping',

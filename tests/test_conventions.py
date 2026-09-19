@@ -9,7 +9,7 @@ Two classes of test live here.
   2. Executable statements of the defects found in the Phase 1 audit. These
      are marked ``xfail(strict=True)`` so the suite stays green today, and
      will *fail loudly* the moment a fix lands without the marker being
-     removed. Each carries the finding ID from docs/GEOMETRY_AUDIT.md.
+     removed. Each carries the finding ID from docs/engineering/GEOMETRY_AUDIT.md.
 
 Nothing here asserts a convention chosen from variable *names*. Every
 expectation is anchored to a numeric property of the geometry.
@@ -32,7 +32,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
 sys.path.insert(0, _ROOT)
 
-import helper_functions as hf  # noqa: E402
+from tests.reference import helper_functions as hf  # noqa: E402
 from tools.geometry_audit import (  # noqa: E402
     b_of_phi, a_of, E_of, q0_from_arc_length, theta_samples, centerline_points,
 )
@@ -199,8 +199,8 @@ def tendon_paths(params, tmp_path_factory):
     hf.generate_cable_sites_csv_zrot_from_P(
         inv, n_cables=params["n_cables"], csv_path=str(csv_path))
 
-    c2x = _load("c2x_t", "csv2xml.py")
-    pv = _load("pv_t", "preview.py")
+    c2x = _load("c2x_t", "spirob/pipeline/csv2xml.py")
+    pv = _load("pv_t", "tools/preview.py")
 
     shift = params["tendon_inward_shift"]
     half = math.radians(params["phi_deg"] / 2.0)
@@ -270,15 +270,11 @@ def test_preview_mjcf_agreement_is_at_float_precision(tendon_paths):
     assert worst_z < 1e-9, f"height disagreement {worst_z:.3e} m"
 
 
-@pytest.mark.xfail(strict=True, reason="F-08 DEFERRED BY DECISION, not a "
-                   "latent bug. The -dz*tan(phi/2) correction applies an "
-                   "intra-link taper the discretised geometry does not have "
-                   "(surface radius is exactly constant within a link), so the "
-                   "routed tendon steps at every boundary. Phase 2 reproduces "
-                   "this deliberately: changing it would change existing MJCF "
-                   "output, which Phase 2 forbids. The canonical layer now has "
-                   "a single definition to change once the routing rule is "
-                   "chosen. See docs/GEOMETRY_AUDIT.md section 6 item 3.")
+@pytest.mark.xfail(strict=True, reason=(
+    "F-08 retained routing choice: the distal site includes -dz*tan(phi/2), "
+    "so it does not satisfy the constant-offset alternative. Changing the "
+    "routing rule needs separate calibration and would change MJCF. "
+    "See docs/engineering/GEOMETRY_AUDIT.md section 6 item 3."))
 def test_tendon_offset_from_surface_is_constant(tendon_paths, params):
     shift = params["tendon_inward_shift"]
     for r1_new, _, r2_new, _ in tendon_paths["surface"]:
