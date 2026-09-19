@@ -182,7 +182,7 @@ $$A=\frac{\sqrt{1+b^2}\,a(E+1)}{2b},\qquad L=A(e^{bq_0}-1),\qquad q_0=\frac{\ln(
 
 Angles in these equations are **radians**. Complete units span Δθ and have geometric size ratio $\beta_g=e^{b\Delta\theta}$. The generator straightens each centre chord, reverses tip-to-base construction into base-to-tip numbering, and corrects a partial base's mounting face. Hence requested continuous length, discrete length and measured end widths differ. Whole-unit policy rounds the angular span upward before assembly.
 
-For n-lobe links, the cutter has polygon circumradius $R_p=R[1+t(\sec(\pi/n)-1)]$ and notch radius $r_n=\text{notch_factor}\,R_p\sin(\pi/n)$. The actual slice also includes axial draft and the revolved slit envelope; the website applies both.
+For n-lobe links, the cutter has polygon circumradius $R_p=R[1+t(\sec(\pi/n)-1)]$ and notch radius $r_n=\text{notch\_factor}\,R_p\sin(\pi/n)$. The actual slice also includes axial draft and the revolved slit envelope; the website applies both.
 
 ## Dynamics and contact
 
