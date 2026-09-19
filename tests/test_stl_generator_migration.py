@@ -71,7 +71,7 @@ def stl_mod():
     if not _HAS_CAD:
         pytest.skip("CadQuery not installed")
     spec = importlib.util.spec_from_file_location(
-        "csv2geom_nlobe_under_test", os.path.join(_ROOT, "csv2geom_nlobe.py"))
+        "csv2geom_nlobe_under_test", os.path.join(_ROOT, "spirob/pipeline/csv2geom_nlobe.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -80,7 +80,7 @@ def stl_mod():
 @pytest.fixture(scope="module")
 def csv_path(tmp_path_factory, params):
     """A CSV generated the way the production pipeline generates it."""
-    import helper_functions as hf
+    from tests.reference import helper_functions as hf
     out = tmp_path_factory.mktemp("geom") / "sites.csv"
     geo = from_params(params)
     hf.generate_cable_sites_csv_zrot_from_P(
@@ -109,7 +109,7 @@ def _stl_vertices(path):
 # ── The migration is real ───────────────────────────────────────────────────
 
 def test_stl_generator_imports_the_canonical_model():
-    src = _read_text(os.path.join(_ROOT, "csv2geom_nlobe.py"))
+    src = _read_text(os.path.join(_ROOT, "spirob/pipeline/csv2geom_nlobe.py"))
     assert "from spirob.geometry import" in src
     assert "from_params" in src
     assert "SpiRobGeometry" in src
@@ -117,14 +117,14 @@ def test_stl_generator_imports_the_canonical_model():
 
 def test_stale_phi_default_is_gone():
     """Audit F-11: phi_deg=5.7 silently disagreed with params.json's 6.3."""
-    src = _read_text(os.path.join(_ROOT, "csv2geom_nlobe.py"))
+    src = _read_text(os.path.join(_ROOT, "spirob/pipeline/csv2geom_nlobe.py"))
     assert "phi_deg=5.7" not in src
     assert "phi_deg = 5.7" not in src
 
 
 def test_column_mapping_is_declared_once():
     """The column->quad-slot mapping must not be re-spelled per call site."""
-    src = _read_text(os.path.join(_ROOT, "csv2geom_nlobe.py"))
+    src = _read_text(os.path.join(_ROOT, "spirob/pipeline/csv2geom_nlobe.py"))
     assert "_SLOT_COLUMNS" in src
     # the old inline literal list must not survive
     assert 'point_sets = ["joint_s1", "joint_s2", "c0_s2", "c0_s1"]' not in src
@@ -224,7 +224,7 @@ def _extract_call_args(source, func_name):
 
 def test_cli_does_not_pass_legacy_n_cables_or_phi_deg():
     """The __main__ call must rely on the canonical model, not params scalars."""
-    src = _read_text(os.path.join(_ROOT, "csv2geom_nlobe.py"))
+    src = _read_text(os.path.join(_ROOT, "spirob/pipeline/csv2geom_nlobe.py"))
     main_block = src.split('if __name__ == "__main__":', 1)[1]
     call = _extract_call_args(main_block, "process_csv")
     assert "n_cables" not in call, "CLI still passes a legacy n_cables"
@@ -292,7 +292,7 @@ def test_wrong_unit_count_is_rejected(stl_mod, params, csv_path):
 @requires_cad
 def test_both_policies_yield_21_units(stl_mod, params, tmp_path,
                                       policy, expect_partial):
-    import helper_functions as hf
+    from tests.reference import helper_functions as hf
     import pandas as pd
     geo = from_params(dict(params, terminal_unit_policy=policy))
     csv_file = tmp_path / f"{policy}.csv"
@@ -307,7 +307,7 @@ def test_both_policies_yield_21_units(stl_mod, params, tmp_path,
 
 @requires_cad
 def test_whole_units_never_creates_a_22nd_unit(stl_mod, params, tmp_path):
-    import helper_functions as hf
+    from tests.reference import helper_functions as hf
     import pandas as pd
     geo = from_params(dict(params, terminal_unit_policy="whole_units"))
     assert geo.n_units == 21
@@ -325,7 +325,7 @@ def test_whole_units_never_creates_a_22nd_unit(stl_mod, params, tmp_path):
 
 @requires_cad
 def test_whole_units_base_unit_is_complete_and_tallest(stl_mod, params, tmp_path):
-    import helper_functions as hf
+    from tests.reference import helper_functions as hf
     import pandas as pd
     heights = {}
     for policy in ("exact_requested_length", "whole_units"):
@@ -354,7 +354,7 @@ def test_stl_output_matches_the_legacy_path(stl_mod, params, tmp_path, policy):
     coordinate and so exercises a different set of inputs entirely.
     """
     import cadquery as cq
-    import helper_functions as hf
+    from tests.reference import helper_functions as hf
     import pandas as pd
 
     geo = from_params(dict(params, terminal_unit_policy=policy))
@@ -398,7 +398,17 @@ def test_stl_output_matches_the_legacy_path(stl_mod, params, tmp_path, policy):
             got = f.read()
         with open(old_dir / name, "rb") as f:
             want = f.read()
-        assert got == want, f"{policy}/{name} differs from the pre-migration output"
+        if geo.units[0].is_partial and name == 'link_001.stl':
+            # The new flat mount produces nominally zero Z coordinates. OCC's
+            # two equivalent construction paths can leave different ~1e-19 m
+            # residuals there. Compare the complete tessellation at 1e-12 m,
+            # including triangle order/count; keep exact bytes for other links.
+            import numpy as np
+            assert _stl_triangle_count(new_dir/name) == _stl_triangle_count(old_dir/name)
+            np.testing.assert_allclose(_stl_vertices(new_dir/name), _stl_vertices(old_dir/name),
+                                       atol=ABS_M, rtol=0)
+        else:
+            assert got == want, f"{policy}/{name} differs from the pre-migration output"
 
 
 @requires_cad
@@ -441,27 +451,53 @@ def test_cli_still_accepts_the_documented_flags(params, csv_path, tmp_path):
     child_env = os.environ.copy()
     child_env["PYTHONIOENCODING"] = "utf-8"
     proc = subprocess.run(
-        [sys.executable, "csv2geom_nlobe.py",
+        [sys.executable, "spirob/pipeline/csv2geom_nlobe.py",
          "--in", csv_path, "--params", str(pfile),
          "--outdir", str(tmp_path / "cli")],
         cwd=_ROOT, capture_output=True, text=True, encoding="utf-8",
         env=child_env)
     assert proc.returncode == 0, proc.stderr
     assert "terminal_unit_policy = exact_requested_length" in proc.stdout
-    assert len(os.listdir(str(tmp_path / "cli"))) == 21
+    assert set(os.listdir(str(tmp_path / "cli"))) == {'link_001.stl', 'link_template.stl'}
 
 
-def test_build_py_invocation_is_unchanged():
-    """The STL step's command line must not have shifted."""
-    src = _read_text(os.path.join(_ROOT, "build.py"))
-    assert "python csv2geom_nlobe.py" in src
-    assert "--in Geom_Data_CSV/Spirob_geom_data.csv" in src
-    assert "--params {args.params}" in src
+def test_build_py_preserves_stl_arguments_as_separate_tokens(tmp_path, monkeypatch):
+    """The driver must preserve parameters and CSV arguments, including spaces."""
+    import build
+    pfile = tmp_path / "my params.json"
+    pfile.write_text(_read_text(os.path.join(_ROOT, "params.json")), encoding="utf-8")
+    seen = []
+    staged_params = {}
+    def capture(argv, desc, cwd):
+        if str(argv[0]).endswith("spirob/pipeline/csv2geom_nlobe.py"):
+            seen.extend(map(str, argv))
+            # The driver now writes resolved CLI overrides to a staged copy.
+            # Verify that the copy preserves the input values and is passed
+            # as one token even when its containing directory has spaces.
+            with open(seen[seen.index("--params") + 1], encoding="utf-8") as stream:
+                staged_params.update(json.load(stream))
+            raise RuntimeError("captured STL command")
+    monkeypatch.setattr(build, "run_step", capture)
+    monkeypatch.setattr(sys, "argv", ["build.py", "--params", str(pfile),
+                                    "--no-preview", "--output-dir", str(tmp_path / "my outputs" / "outputs")])
+    (tmp_path / "my outputs").mkdir()
+    with pytest.raises(RuntimeError, match="captured STL command"):
+        build.main()
+    assert seen[seen.index("--in") + 1] == "Geom_Data_CSV/Spirob_geom_data.csv"
+    assert "my outputs" in seen[seen.index("--params") + 1]
+    original = json.loads(pfile.read_text(encoding="utf-8"))
+    for key, value in original.items():
+        if key == 'build':
+            for option, explicit in value.items():
+                assert staged_params['build'][option] == explicit
+        else:
+            assert staged_params[key] == value
+    assert staged_params['build']['cad'] is False
 
 
 def test_f08_tendon_rule_untouched():
     """This phase must not alter tendon routing."""
-    src = _read_text(os.path.join(_ROOT, "csv2xml.py"))
+    src = _read_text(os.path.join(_ROOT, "spirob/pipeline/csv2xml.py"))
     assert "math.tan(HALF_PHI)" in src
-    stl_src = _read_text(os.path.join(_ROOT, "csv2geom_nlobe.py"))
+    stl_src = _read_text(os.path.join(_ROOT, "spirob/pipeline/csv2geom_nlobe.py"))
     assert "tendon" not in stl_src.lower().replace("tendon_inward_shift", "")

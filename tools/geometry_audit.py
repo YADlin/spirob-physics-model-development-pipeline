@@ -273,7 +273,7 @@ def format_report(geo: SpiRobGeometry) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="SpiRob canonical geometry audit")
-    ap.add_argument("--params", default="params.json")
+    ap.add_argument("--params", default="params.json", help='Input SpiRob parameters JSON')
     ap.add_argument("--out", default=None, help="write the build manifest as JSON")
     ap.add_argument("--policy", default=None,
                     choices=[m.value for m in TerminalUnitPolicy],

@@ -1,0 +1,471 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SpiRob build parameters",
+  "type": "object",
+  "required": [
+    "L",
+    "d_tip",
+    "phi_deg",
+    "Delta_theta_deg",
+    "n_cables",
+    "tendon_inward_shift",
+    "show_preview"
+  ],
+  "properties": {
+    "L": {
+      "title": "Requested length L",
+      "description": "Continuous centre-spiral arc length before segmentation. The assembled straight chain is slightly shorter because its links follow chords.",
+      "default": 0.22628,
+      "type": "number",
+      "x-unit": "m",
+      "x-group": "geometry",
+      "exclusiveMinimum": 0
+    },
+    "d_tip": {
+      "title": "Nominal tip width",
+      "description": "Width between the two continuous spiral boundaries at \u03b8 = 0. The finished tip width is calculated after straightening.",
+      "default": 0.007139,
+      "type": "number",
+      "x-unit": "m",
+      "x-group": "geometry",
+      "exclusiveMinimum": 0
+    },
+    "phi_deg": {
+      "title": "Included taper \u03c6",
+      "description": "Full angle between the continuous taper boundaries. Larger \u03c6 makes the base wider for the same length and tip width.",
+      "default": 6.3,
+      "type": "number",
+      "x-unit": "\u00b0",
+      "x-group": "geometry",
+      "exclusiveMinimum": 0,
+      "exclusiveMaximum": 45
+    },
+    "Delta_theta_deg": {
+      "title": "Segment angle \u0394\u03b8",
+      "description": "Angular span of a complete link in the curled construction. Larger values give fewer, coarser links. This is not a joint travel limit.",
+      "default": 30.78,
+      "type": "number",
+      "x-unit": "\u00b0",
+      "x-group": "geometry",
+      "exclusiveMinimum": 0,
+      "exclusiveMaximum": 180
+    },
+    "n_cables": {
+      "title": "Number of cables",
+      "description": "Two cables use flat links and hinge joints. Three or more use n-lobe links and ball joints.",
+      "default": 3,
+      "type": "integer",
+      "x-unit": "",
+      "x-group": "geometry",
+      "minimum": 2
+    },
+    "terminal_unit_policy": {
+      "title": "Length completion",
+      "description": "Exact keeps the requested arc and may cut a partial base; whole units extends the arc to the next full link.",
+      "default": "exact_requested_length",
+      "type": "string",
+      "x-unit": "",
+      "x-group": "geometry",
+      "enum": [
+        "exact_requested_length",
+        "whole_units"
+      ]
+    },
+    "tendon_inward_shift": {
+      "title": "Cable inward offset",
+      "description": "Radial inward shift of simulation routing sites. A further per-link taper correction is applied at the distal site; this is not a guaranteed CAD wall clearance.",
+      "default": 0.0015,
+      "type": "number",
+      "x-unit": "m",
+      "x-group": "geometry",
+      "minimum": 0
+    },
+    "base_thickness_m": {
+      "title": "Base centre thickness",
+      "description": "Full Y thickness at the base mounting plane. Auto sets it equal to the generated base width. The tip thickness is derived.",
+      "default": null,
+      "type": [
+        "number",
+        "null"
+      ],
+      "x-unit": "m",
+      "x-group": "section",
+      "exclusiveMinimum": 0,
+      "x-cables": "two"
+    },
+    "thickness_profile": {
+      "title": "Axial thickness law",
+      "description": "Linear tapers within links and across joints. Stepped keeps each link at constant thickness for legacy comparison. Geometry scaling is separate from the joint gain law.",
+      "default": "linear",
+      "type": "string",
+      "x-unit": "",
+      "x-group": "section",
+      "enum": [
+        "linear",
+        "stepped"
+      ],
+      "x-cables": "two"
+    },
+    "flat_section": {
+      "title": "Two-cable section",
+      "description": "Rectangular or a six-sided section with two centre ridges. The hex section is generally not a regular hexagon.",
+      "default": "rectangular",
+      "type": "string",
+      "x-unit": "",
+      "x-group": "section",
+      "enum": [
+        "rectangular",
+        "hex"
+      ],
+      "x-cables": "two"
+    },
+    "hex_edge_ratio": {
+      "title": "Hex edge / centre thickness",
+      "description": "Edge thickness divided by centre thickness at the same axial station. Smaller values make the centre ridges more pronounced.",
+      "default": 0.75,
+      "type": "number",
+      "x-unit": "",
+      "x-group": "section",
+      "exclusiveMinimum": 0,
+      "exclusiveMaximum": 1,
+      "x-cables": "hex"
+    },
+    "nlobe_t": {
+      "title": "Polygon fill t",
+      "description": "Polygon radius R\u209a = R[1 + t(sec(\u03c0/n) \u2212 1)]. At 0, vertices lie on the reference circle; at 1, sides are tangent before draft.",
+      "default": 0.5,
+      "type": "number",
+      "x-unit": "",
+      "x-group": "section",
+      "minimum": 0,
+      "maximum": 1,
+      "x-cables": "many"
+    },
+    "notch_factor": {
+      "title": "Notch ratio",
+      "description": "Notch radius divided by half the polygon side length. Zero removes the notches. A convex collision hull bridges these concave notches.",
+      "default": 0.25,
+      "type": "number",
+      "x-unit": "",
+      "x-group": "section",
+      "minimum": 0,
+      "maximum": 0.4,
+      "x-cables": "many"
+    },
+    "show_preview": {
+      "title": "Desktop preview during build",
+      "description": "Show the legacy 2D approval window before generating. The web builder always runs without this window.",
+      "default": false,
+      "type": "boolean",
+      "x-unit": "",
+      "x-group": "build"
+    },
+    "post_gen": {
+      "type": "object",
+      "properties": {
+        "robot_pos": {
+          "title": "Root position",
+          "description": "Position of link_001 in world coordinates. This affects simulation placement, not exported manufacturing CAD.",
+          "default": [
+            0,
+            0,
+            0.22628
+          ],
+          "type": "array",
+          "x-unit": "m",
+          "x-group": "placement",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "number"
+          }
+        },
+        "robot_quat": {
+          "title": "Root quaternion",
+          "description": "Root orientation as [w,x,y,z]. [0,0,-1,0] points local +Z downward in world coordinates. Must be nonzero.",
+          "default": [
+            0,
+            0,
+            -1,
+            0
+          ],
+          "type": "array",
+          "x-unit": "",
+          "x-group": "placement",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "number"
+          }
+        },
+        "joint_stiffness_base": {
+          "title": "Spring coefficient K\u2080",
+          "description": "Uncalibrated base coefficient. K\u1d62 = K\u2080 / \u03b2\u2c7c^[3(i\u22121)], before the protected base override.",
+          "default": 0.2,
+          "type": "number",
+          "x-unit": "N\u00b7m/rad",
+          "x-group": "dynamics",
+          "minimum": 0
+        },
+        "joint_damping_base": {
+          "title": "Damping coefficient D\u2080",
+          "description": "Uncalibrated damping coefficient, with the same exponent as stiffness.",
+          "default": 0.01,
+          "type": "number",
+          "x-unit": "N\u00b7m\u00b7s/rad",
+          "x-group": "dynamics",
+          "minimum": 0
+        },
+        "joint_beta": {
+          "title": "Gain decay \u03b2\u2c7c",
+          "description": "User-chosen gain decay, independent of geometric \u03b2g = exp(b\u0394\u03b8). Above 1 decreases gains toward the tip; 1 gives constant gains.",
+          "default": 1.03,
+          "type": "number",
+          "x-unit": "",
+          "x-group": "dynamics",
+          "exclusiveMinimum": 0
+        },
+        "first_joint_stiffness": {
+          "title": "Protected base stiffness",
+          "description": "Override j_001. A large spring approximates a fixed mount; it is not an actual rigid weld.",
+          "default": 100,
+          "type": "number",
+          "x-unit": "N\u00b7m/rad",
+          "x-group": "dynamics",
+          "minimum": 0
+        },
+        "first_joint_damping": {
+          "title": "Protected base damping",
+          "description": "Override damping at j_001 only. The gain editing tool preserves this joint.",
+          "default": 50,
+          "type": "number",
+          "x-unit": "N\u00b7m\u00b7s/rad",
+          "x-group": "dynamics",
+          "minimum": 0
+        },
+        "timestep": {
+          "title": "Physics timestep",
+          "description": "Integration step. 0.0001 s is the validated starting point for this SpiRob branch; stability remains load-dependent.",
+          "default": 0.0001,
+          "type": "number",
+          "x-unit": "s",
+          "x-group": "dynamics",
+          "exclusiveMinimum": 0
+        },
+        "tip_site_pos": {
+          "title": "Tip reference site",
+          "description": "Optional position in the final link\u2019s local body frame. Used as a named measurement/reference point.",
+          "default": [
+            0,
+            0,
+            0.005
+          ],
+          "type": "array",
+          "x-unit": "m",
+          "x-group": "placement",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "number"
+          }
+        },
+        "_comment": {
+          "type": "string",
+          "x-hidden": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "build": {
+      "type": "object",
+      "properties": {
+        "collision_mode": {
+          "title": "Contact surface",
+          "description": "Convex: one zero-mass hull per link. Mesh: native mesh hull with preset settings. Capsule: rounded approximation. Compound: legacy stepped rectangular two-cable only.",
+          "default": "convex",
+          "type": "string",
+          "x-unit": "",
+          "x-group": "build",
+          "enum": [
+            "convex",
+            "mesh",
+            "capsule",
+            "compound"
+          ]
+        },
+        "mesh_layout": {
+          "title": "Mesh files",
+          "description": "Shared reuses one complete-link STL and a partial-base STL; individual writes one STL per link.",
+          "default": "shared",
+          "type": "string",
+          "x-unit": "",
+          "x-group": "build",
+          "enum": [
+            "shared",
+            "individual"
+          ]
+        },
+        "physics_preset": {
+          "title": "Physics preset",
+          "description": "Default preserves existing solver/friction settings. Safe selects capsules unless explicitly overridden; fast and high change solver settings. Explicit JSON/CLI overrides take precedence.",
+          "default": "default",
+          "type": "string",
+          "x-unit": "",
+          "x-group": "build",
+          "enum": [
+            "default",
+            "safe",
+            "fast",
+            "high"
+          ]
+        },
+        "cad_profile": {
+          "title": "CAD profile",
+          "description": "Fabrication adds a finite central flexure and optional drilled channels. Simulation assembles the rigid link surfaces.",
+          "default": "fabrication",
+          "type": "string",
+          "x-unit": "",
+          "x-group": "fabrication",
+          "enum": [
+            "fabrication",
+            "simulation"
+          ]
+        },
+        "cad": {
+          "title": "Export fabrication CAD",
+          "description": "Generate whole-robot STEP and millimetre STL, plus a CAD validation report.",
+          "default": false,
+          "type": "boolean",
+          "x-unit": "",
+          "x-group": "fabrication"
+        },
+        "iges": {
+          "title": "Also export IGES",
+          "description": "Optional IGES surface export using OpenCascade. Requires CAD export; STEP is the preferred solid interchange.",
+          "default": false,
+          "type": "boolean",
+          "x-unit": "",
+          "x-group": "fabrication"
+        },
+        "fuse_cad": {
+          "title": "Fuse simulation CAD",
+          "description": "Join simulation solids where possible. Fabrication is already fused. Requires CAD export.",
+          "default": false,
+          "type": "boolean",
+          "x-unit": "",
+          "x-group": "fabrication"
+        },
+        "plain": {
+          "title": "Revolved circular section",
+          "description": "Advanced comparison mode using the revolved surface without the flat/n-lobe cutter. Convex mode is not supported for this mode.",
+          "default": false,
+          "type": "boolean",
+          "x-unit": "",
+          "x-group": "build"
+        },
+        "align_geom_frames": {
+          "title": "Compiled geom frame alignment",
+          "description": "Export an additional version-specific .mjb with aligned geom axes. XML itself retains MuJoCo mesh principal frames.",
+          "default": false,
+          "type": "boolean",
+          "x-unit": "",
+          "x-group": "build"
+        },
+        "neck_width_mm": {
+          "title": "Elastic core width / diameter",
+          "description": "Finite central ligament: X width for two cables, cylinder diameter for n cables. This is the available elastic-layer dimension; there is no independent inter-link layer-thickness setting.",
+          "default": 1,
+          "type": "number",
+          "x-unit": "mm",
+          "x-group": "fabrication",
+          "exclusiveMinimum": 0
+        },
+        "cable_hole_diameter_mm": {
+          "title": "Cable channel diameter",
+          "description": "Diameter of channels swept along the routing path. Zero leaves the CAD undrilled. Does not change simulation tendon radius or mass.",
+          "default": 0,
+          "type": "number",
+          "x-unit": "mm",
+          "x-group": "fabrication",
+          "minimum": 0
+        },
+        "collision_corner_radius_ratio": {
+          "title": "Compound corner radius ratio",
+          "description": "Corner radius / half-width for legacy compound colliders only. Has no effect on convex hulls.",
+          "default": 0.04,
+          "type": "number",
+          "x-unit": "",
+          "x-group": "build",
+          "exclusiveMinimum": 0
+        },
+        "collision_margin_m": {
+          "title": "Contact margin override",
+          "description": "Extra distance at which contacts become active. Auto selects zero for convex/compound or the physics preset value.",
+          "default": null,
+          "type": [
+            "number",
+            "null"
+          ],
+          "x-unit": "m",
+          "x-group": "build",
+          "minimum": 0
+        },
+        "arena_memory_mib": {
+          "title": "Arena allocation override",
+          "description": "Native MuJoCo constraint workspace. Auto uses 128 MiB for compound, otherwise the compiler default. Increasing memory does not improve numerical stability.",
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "x-unit": "MiB",
+          "x-group": "build",
+          "minimum": 1
+        },
+        "flat_thickness_m": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0,
+          "description": "Legacy fabrication-only override.",
+          "x-hidden": true
+        },
+        "flat_edge_ratio": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0,
+          "description": "Legacy fabrication-only override.",
+          "x-hidden": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "flat_thickness_ratio": {
+      "type": "number",
+      "minimum": 0.05,
+      "maximum": 1,
+      "description": "Legacy two-cable ratio; mutually exclusive with base_thickness_m.",
+      "x-hidden": true
+    },
+    "flat_edge_ratio": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 1,
+      "description": "Legacy manufacturing-only lens edge ratio.",
+      "x-hidden": true
+    },
+    "taper_angle_deg": {
+      "type": "number",
+      "description": "Legacy alias; must agree with phi_deg.",
+      "x-hidden": true
+    },
+    "_comment": {
+      "type": "string",
+      "x-hidden": true
+    }
+  },
+  "additionalProperties": false
+}

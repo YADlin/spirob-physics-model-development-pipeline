@@ -50,9 +50,11 @@ WHAT ``Invert_pose()`` DOES — AND WHY IT IS CORRECT
     base, SMALLEST at the tip. When the requested length does not contain an
     integer number of nominal units, the partial unit is the last spiral
     interval, and after inversion it becomes ``link_001``, the base link.
-    *This is correct by design and is preserved.* It is not an inversion
-    error. It does mean a fabricated robot has a partial unit at its base,
-    which is a fabrication note, not a geometry defect.
+    The ordering is preserved. The partial base surface is finished separately:
+    its mounting face is flat, and its joint-facing slope matches a complete
+    unit. Using the shortened angular interval to derive both faces used to
+    put the apparent cut at the joint. Backbone endpoints and widths retain
+    their analytical values; only the partial unit's outer vertices change.
 
     Step (1) anchors the TIP at exactly ``y = requested_length_m``. The base
     therefore sits at ``requested_length_m - discrete_chord_length_m`` in the
@@ -92,7 +94,8 @@ TENDON POINTS
 
     The routing stage reproduces ``csv2xml.py`` exactly (verified to 1e-15 by
     ``tests/test_canonical_geometry.py``) so that adopting this model changes
-    no simulation output. See ``docs/GEOMETRY_AUDIT.md`` F-08 for the open
+    no routing convention. The partial base surface correction intentionally
+    changes that link's attachment/routing points. See ``docs/engineering/GEOMETRY_AUDIT.md`` F-08 for the open
     question about whether that correction is the right long-term rule.
 
 FABRICATION ANCHORS (deferred to a later phase)
@@ -196,7 +199,7 @@ def phi_from_b(b: float) -> float:
     rather than the algebraically identical ``atan(num/den)``: for ``b > 0``
     the denominator is positive so the two are mathematically the same, but
     they round differently, and the difference propagates into every CSV, STL
-    and MJCF value. See docs/CANONICAL_GEOMETRY.md, "Numerical contract".
+    and MJCF value. See docs/engineering/CANONICAL_GEOMETRY.md, "Numerical contract".
     """
     e = math.exp(2 * math.pi * b)
     num = b * (e - 1.0)
@@ -540,6 +543,38 @@ def _invert(straight: Sequence[np.ndarray], flip_length_m: float) -> List[np.nda
     return out
 
 
+def _finish_partial_base(inverted, straight, curled, a, b, delta_theta, flip_ref,
+                         length_tolerance):
+    """Put the partial unit's cut on the mount, retaining the nominal slit.
+
+    Preserve its existing width and both backbone endpoints. Obtain the
+    joint-facing slope from a complete canonical unit, scaled to this width;
+    put the outer base vertex on the plane through the base joint. This is a
+    base surface construction, not a change to the spiral arc or chord lengths.
+    Keep all three exposed poses rigidly consistent with the corrected surface.
+    """
+    template = _straighten(_curled_quads(np.array([0.0, delta_theta]), a, b))[0]
+    # In tip-first order, slots 0/3 are the centre/outer joint-facing points.
+    joint_slope = (template[3, 1] - template[0, 1]) / abs(
+        template[3, 0] - template[0, 0])
+    base = inverted[0]
+    radius = abs(base[2, 0] - base[1, 0])
+    outer_tip_z = base[1, 1] - radius * joint_slope
+    if outer_tip_z <= base[0, 1] + length_tolerance:
+        raise ValueError(
+            'Partial base is too short for the nominal joint-facing slope at '
+            'its current width. Use terminal_unit_policy="whole_units" or '
+            'adjust L / Delta_theta_deg; refusing an inverted base surface.')
+    base[2, 1] = outer_tip_z
+    base[3, 1] = base[0, 1]
+
+    for inverted_slot, spiral_slot in ((2, 3), (3, 2)):
+        straight[-1][spiral_slot] = (
+            base[inverted_slot, 0], flip_ref - base[inverted_slot, 1])
+    angle = _signed_angle_to_up(curled[-1][1] - curled[-1][0])
+    curled[-1][2:] = _rotate2d(straight[-1][2:] - straight[-1][0], -angle) + curled[-1][0]
+
+
 def _chord_offset_factor(P0: np.ndarray, P1: np.ndarray) -> float:
     """Perpendicular distance from the spiral pole to the chord ``P0->P1``."""
     e = P1 - P0
@@ -799,6 +834,9 @@ def build_geometry(inputs: UserInputs,
                 if inputs.terminal_unit_policy is TerminalUnitPolicy.EXACT_REQUESTED_LENGTH
                 else effective_len)
     inverted = _invert(straight, flip_ref)
+    if has_partial:
+        _finish_partial_base(inverted, straight, curled, a, b, dth, flip_ref,
+                             tol.length_m)
 
     n_total = len(curled)
     rc_vals = central_radius(theta, a, b)
@@ -869,8 +907,9 @@ def build_geometry(inputs: UserInputs,
             f"{math.degrees(spans[-1]):.4f} deg instead of "
             f"{math.degrees(dth):.4f} deg. After Invert_pose() this becomes "
             "link_001, the base link, by design — the intended large-at-base, "
-            "small-at-tip ordering is preserved. Fabrication note: the printed "
-            "part will have a partial unit at its base."
+            "small-at-tip ordering is preserved. The partial base has a flat "
+            "mounting face and the nominal joint-facing slope; its backbone "
+            "span and width are preserved."
         )
     if inputs.terminal_unit_policy is TerminalUnitPolicy.WHOLE_UNITS and completion_delta > tol.length_m:
         warnings.append(

@@ -1,0 +1,69 @@
+name: Generate SpiRob model
+on:
+  workflow_dispatch:
+    inputs:
+      preset:
+        description: "Preset if no JSON is supplied"
+        type: choice
+        options:
+          [
+            params-two-cable-hex.json,
+            params-two-cable.json,
+            params-three-cable.json,
+            params-four-cable.json,
+            params-six-cable.json,
+          ]
+        default: params-three-cable.json
+      params_json:
+        description: "Optional complete params.json content; blank uses the preset"
+        type: string
+        required: false
+        default: ""
+permissions:
+  contents: read
+jobs:
+  generate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.15"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Native CAD libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1 libegl1 libopengl0
+      - run: uv sync --locked --no-dev
+      - name: Validate inputs
+        env:
+          SPIROB_PARAMS_JSON: ${{ inputs.params_json }}
+          SPIROB_PRESET: ${{ inputs.preset }}
+        run: |
+          uv run --no-dev python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from tools.designer import validate_build_request
+          text = os.environ['SPIROB_PARAMS_JSON'].strip()
+          if not text:
+              name = os.environ['SPIROB_PRESET']
+              allowed = {p.name for p in Path('examples').glob('params-*.json')}
+              if name not in allowed:
+                  raise ValueError('Unknown preset')
+              text = (Path('examples') / name).read_text()
+          if len(text.encode()) > 100_000:
+              raise ValueError('Input JSON exceeds 100000 bytes')
+          p = validate_build_request(json.loads(text))
+          Path('build').mkdir(exist_ok=True)
+          Path('build/action-params.json').write_text(json.dumps(p, indent=2)+'\n')
+          PY
+      - name: Build and compile
+        run: uv run --no-dev python build.py --params build/action-params.json --output-dir build/model --no-preview
+      - uses: actions/upload-artifact@v7
+        with:
+          name: spirob-model
+          path: build/model/
+          if-no-files-found: error
+          retention-days: 14

@@ -32,8 +32,8 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
 sys.path.insert(0, _ROOT)
 
-import helper_functions as hf  # noqa: E402
-import spirob_csv_generator as gen  # noqa: E402
+from tests.reference import helper_functions as hf  # noqa: E402
+from spirob.pipeline import spirob_csv_generator as gen  # noqa: E402
 from spirob.geometry import TerminalUnitPolicy, from_params  # noqa: E402
 
 ABS_M = 1e-12
@@ -71,7 +71,7 @@ def _rows(path):
 
 def test_generator_no_longer_derives_the_spiral():
     """The duplicated b / a / q0 / pose calculations must be gone."""
-    src = _read_text(os.path.join(_ROOT, "spirob_csv_generator.py"))
+    src = _read_text(os.path.join(_ROOT, "spirob/pipeline/spirob_csv_generator.py"))
     for symbol in ("solve_b_for_phi", "generate_spiral_pose",
                    "straighten_pose", "Invert_pose"):
         assert symbol not in src, (
@@ -82,7 +82,7 @@ def test_generator_no_longer_derives_the_spiral():
 
 
 def test_generator_imports_the_canonical_model():
-    src = _read_text(os.path.join(_ROOT, "spirob_csv_generator.py"))
+    src = _read_text(os.path.join(_ROOT, "spirob/pipeline/spirob_csv_generator.py"))
     assert "from spirob.geometry import" in src
     assert "from_params" in src
 
@@ -95,14 +95,14 @@ def test_generator_still_exposes_validate_params():
 
 def test_csv_writer_shim_is_still_the_serialiser():
     """helper_functions remains necessary, but only for CSV serialisation."""
-    src = _read_text(os.path.join(_ROOT, "spirob_csv_generator.py"))
+    src = _read_text(os.path.join(_ROOT, "spirob/pipeline/spirob_csv_generator.py"))
     assert "generate_cable_sites_csv_zrot_from_P" in src
 
 
 # ── Default policy: byte-level compatibility ────────────────────────────────
 
-def test_default_csv_matches_legacy_pipeline_byte_for_byte(params, tmp_path):
-    """Canonical geometry must reproduce the pre-migration CSV exactly.
+def test_default_csv_preserves_legacy_except_partial_base_surface(params, tmp_path):
+    """Keep complete links and base backbone/radii; correct base face heights.
 
     The legacy chain is reconstructed here from helper_functions, using the
     legacy b/a derivation, and compared as raw text.
@@ -122,11 +122,16 @@ def test_default_csv_matches_legacy_pipeline_byte_for_byte(params, tmp_path):
 
     _write_csv(params, canon_csv)
 
-    assert _read_text(str(canon_csv)) == _read_text(str(legacy_csv)), \
-        "migrated CSV differs from the legacy pipeline output"
+    got, old = _rows(canon_csv), _rows(legacy_csv)
+    assert got[1:] == old[1:]
+    changed = {key for key in got[0] if got[0][key] != old[0][key]}
+    assert changed == {f'c{c}_s{s}_z' for c in range(params['n_cables']) for s in (1, 2)}
+    for c in range(params['n_cables']):
+        assert float(got[0][f'c{c}_s1_z']) == float(got[0]['joint_s1_z'])
+        assert float(got[0][f'c{c}_s2_z']) < float(got[0]['joint_s2_z'])
 
 
-def test_canonical_pose_is_bitwise_identical_to_legacy(params):
+def test_canonical_backbone_and_complete_units_are_bitwise_legacy(params):
     """Guards the numerical contract in spirob/geometry.py.
 
     phi_from_b must use atan2, b_from_phi must keep the legacy early exit,
@@ -145,7 +150,11 @@ def test_canonical_pose_is_bitwise_identical_to_legacy(params):
         delta_theta=math.radians(params["Delta_theta_deg"]))
     legacy = hf.Invert_pose(hf.straighten_pose(raw), params["L"])
     for i, (got, want) in enumerate(zip(geo.inverted_quads(), legacy)):
-        assert np.array_equal(got, want), f"inverted quad {i} is not bitwise equal"
+        if i == 0:
+            assert np.array_equal(got[:2], want[:2])
+            assert np.array_equal(got[:, 0], want[:, 0])
+        else:
+            assert np.array_equal(got, want), f"complete quad {i} is not bitwise equal"
 
 
 def test_default_policy_when_key_absent(params, tmp_path):
@@ -284,7 +293,7 @@ def test_generator_cli_runs_and_reports_both_policies(params, tmp_path):
             json.dump(dict(params, terminal_unit_policy=policy), f)
         out = tmp_path / f"{policy}.csv"
         proc = subprocess.run(
-            [sys.executable, "spirob_csv_generator.py",
+            [sys.executable, "spirob/pipeline/spirob_csv_generator.py",
              "--params", str(pfile), "--out", str(out), "--yes"],
             cwd=_ROOT, capture_output=True, text=True, encoding="utf-8", env=child_env,)
         assert proc.returncode == 0, proc.stderr

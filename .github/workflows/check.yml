@@ -1,0 +1,49 @@
+name: Check generator and designer
+on:
+  pull_request:
+  push:
+    branches: [main, fix/consolidation-cad-workflows]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      MPLBACKEND: Agg
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.15"
+          python-version: "3.12"
+          enable-cache: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - name: Native CAD libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1 libegl1 libopengl0
+      - run: uv sync --locked
+      - run: uv run pytest -q
+      - run: uv run python dev/check_web_geometry.py
+      - name: Install browser test dependencies
+        working-directory: dev/browser
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Exercise the designer and download a real model
+        run: node dev/browser/check.mjs
+      - name: Preserve review screenshots and model
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: designer-verification
+          path: build/verification/
+          if-no-files-found: ignore
+          retention-days: 14

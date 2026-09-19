@@ -1,9 +1,0 @@
-﻿cadquery @ git+https://github.com/CadQuery/cadquery.git@d33816099adbc88e9be8ab46c091cff11e2665fa
-cadquery-ocp==7.8.1.1.post1
-cadquery_vtk
-matplotlib==3.10.6
-matplotlib-inline==0.1.7
-mujoco==3.3.5
-numpy==2.3.2
-
-pandas==2.3.2

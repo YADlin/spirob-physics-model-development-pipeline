@@ -34,7 +34,7 @@ from tools.geometry_audit import (  # noqa: E402
     centerline_points, discrete_backbone_length, solve_q0_for_discrete_length,
     audit,
 )
-import helper_functions as hf  # noqa: E402
+from tests.reference import helper_functions as hf  # noqa: E402
 
 REL_TIGHT = 1e-9
 REL_REF = 5e-9

@@ -45,7 +45,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
 sys.path.insert(0, _ROOT)
 
-import helper_functions as hf  # noqa: E402
+from tests.reference import helper_functions as hf  # noqa: E402
 from spirob.geometry import (  # noqa: E402
     BaseFrame, LengthReport, SpiRobGeometry, SpiralParameters, TendonPoint,
     TerminalUnitPolicy, Tolerances, UnitRecord, UserInputs,
@@ -85,26 +85,29 @@ def geo_whole(params):
 
 # ── 1. Default behaviour is unchanged ───────────────────────────────────────
 
-def test_canonical_reproduces_legacy_curled_pose_exactly(geo, params):
+def test_canonical_preserves_legacy_curled_backbone_and_complete_units(geo, params):
     legacy = hf.generate_spiral_pose(geo.spiral.a_m, geo.spiral.b,
                                      Length=params["L"],
                                      delta_theta=geo.inputs.delta_theta_rad)
     got = geo.curled_quads()
     assert len(got) == len(legacy)
     for i, (g, l) in enumerate(zip(got, legacy)):
-        assert np.array_equal(g, l), f"curled quad {i} differs from Invert-era output"
+        slots = slice(0, 2) if i == len(got)-1 else slice(None)
+        assert np.array_equal(g[slots], l[slots]), f"curled backbone/complete quad {i} differs"
 
 
-def test_canonical_reproduces_legacy_straight_and_inverted_pose_exactly(geo, params):
+def test_canonical_preserves_legacy_straight_and_inverted_backbone(geo, params):
     legacy_raw = hf.generate_spiral_pose(geo.spiral.a_m, geo.spiral.b,
                                          Length=params["L"],
                                          delta_theta=geo.inputs.delta_theta_rad)
     legacy_straight = hf.straighten_pose(legacy_raw)
     legacy_inverted = hf.Invert_pose(legacy_straight, params["L"])
     for i, (g, l) in enumerate(zip(geo.straight_quads(), legacy_straight)):
-        assert np.array_equal(g, l), f"straight quad {i} differs"
+        slots = slice(0, 2) if i == geo.n_units-1 else slice(None)
+        assert np.array_equal(g[slots], l[slots]), f"straight backbone/complete quad {i} differs"
     for i, (g, l) in enumerate(zip(geo.inverted_quads(), legacy_inverted)):
-        assert np.array_equal(g, l), f"inverted quad {i} differs"
+        slots = slice(0, 2) if i == 0 else slice(None)
+        assert np.array_equal(g[slots], l[slots]), f"inverted backbone/complete quad {i} differs"
 
 
 def test_default_policy_is_exact_requested_length(params):
@@ -297,7 +300,7 @@ def test_theta_increases_toward_the_base(geo):
 def test_canonical_tendon_points_match_csv2xml(geo, params, tmp_path):
     """The MJCF writer's independent computation must agree with the canonical
     definition. This is what makes 'shared' real rather than aspirational."""
-    c2x = _load("c2x_canon", "csv2xml.py")
+    c2x = _load("c2x_canon", "spirob/pipeline/csv2xml.py")
     csv_path = tmp_path / "sites.csv"
     hf.generate_cable_sites_csv_zrot_from_P(
         geo.inverted_quads(), n_cables=params["n_cables"], csv_path=str(csv_path))
@@ -333,7 +336,7 @@ def test_canonical_tendon_points_match_csv2xml(geo, params, tmp_path):
 
 def test_preview_consumes_canonical_tendon_points(geo, params):
     """preview.py must not recompute; it must read the canonical points."""
-    pv = _load("pv_canon", "preview.py")
+    pv = _load("pv_canon", "tools/preview.py")
     xs, ys = pv._tendon_path(pv._build_quads(params), params["tendon_inward_shift"],
                              params["phi_deg"], params)
     cable0 = geo.tendon_path(0)
@@ -350,14 +353,14 @@ def test_preview_consumes_canonical_tendon_points(geo, params):
 
 
 def test_preview_build_quads_is_the_canonical_inverted_pose(geo, params):
-    pv = _load("pv_canon2", "preview.py")
+    pv = _load("pv_canon2", "tools/preview.py")
     for a, b in zip(pv._build_quads(params), geo.inverted_quads()):
         assert np.array_equal(a, b)
 
 
 def test_preview_no_longer_forks_the_spiral_maths():
     """F-10 regression guard."""
-    src = open(os.path.join(_ROOT, "preview.py"), encoding="utf-8").read()
+    src = open(os.path.join(_ROOT, "tools/preview.py"), encoding="utf-8").read()
     for symbol in ("def _phi_from_b", "def _solve_b", "def _rotate2d",
                    "def _angle_between", "def _normalize"):
         assert symbol not in src, f"{symbol} has reappeared in preview.py"
