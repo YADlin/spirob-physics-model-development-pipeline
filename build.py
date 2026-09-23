@@ -73,9 +73,12 @@ def main(argv=None):
     p.add_argument('--cad-profile',choices=['fabrication','simulation'],default=None, help='fabrication adds a central ligament and optional channels; simulation assembles link CAD')
     p.add_argument('--flat-thickness-m',type=float, help='Legacy stepped fabrication lens: full constant thickness in metres')
     p.add_argument('--flat-edge-ratio',type=float, help='Legacy stepped fabrication lens: edge / centre thickness, in (0,1]')
-    p.add_argument('--neck-width-mm',type=float, help='Fabrication ligament X width (two cables) or cylinder diameter (n cables), in mm; default 1')
+    p.add_argument('--neck-width-mm',type=float, help='Legacy base core width/diameter in mm; now tapers toward the tip')
+    p.add_argument('--elastic-core-percent',type=float, help='Fabrication core X width (2 cables) or diameter (n cables), percent of local reference width; default 5')
     p.add_argument('--cable-hole-diameter-mm',type=float, help='Fabrication channel diameter in mm; default 0 leaves the CAD undrilled')
     a=p.parse_args(argv)
+    if a.neck_width_mm is not None and a.elastic_core_percent is not None:
+        p.error("Choose --elastic-core-percent or --neck-width-mm, not both")
     params_path = Path(a.params).resolve()
     from spirob.parameters import normalize_params
     original = normalize_params(json.loads(params_path.read_text(encoding='utf-8')))
@@ -83,7 +86,7 @@ def main(argv=None):
     defaults = dict(mesh_layout='shared', collision_mode=None, collision_corner_radius_ratio=.04,
                     collision_margin_m=None, arena_memory_mib=None, align_geom_frames=False, plain=False,
                     cad=False, iges=False, fuse_cad=False, cad_profile='fabrication',
-                    flat_thickness_m=None, flat_edge_ratio=None, neck_width_mm=1., cable_hole_diameter_mm=0.)
+                    flat_thickness_m=None, flat_edge_ratio=None, elastic_core_percent=5., cable_hole_diameter_mm=0.)
     for key, fallback in defaults.items():
         if getattr(a, key) is None: setattr(a, key, settings.get(key, fallback))
     if a.nlobe: a.plain = False
@@ -110,6 +113,12 @@ def main(argv=None):
     from spirob.geometry import from_params
     validate_params(params)
     geometry = from_params(params)
+    from spirob.core import resolve_core_percent, core_dimensions
+    if a.neck_width_mm is not None:
+        a.elastic_core_percent = resolve_core_percent(geometry, neck_width_mm=a.neck_width_mm)
+        params['build']['elastic_core_percent'] = a.elastic_core_percent
+        print('Legacy --neck-width-mm now specifies the base of a tapered core.', flush=True)
+    core_report = core_dimensions(geometry, a.elastic_core_percent)
     dimensions = None
     if params['n_cables'] == 2 and not a.plain:
         params.setdefault('thickness_profile', 'linear')
@@ -133,6 +142,7 @@ def main(argv=None):
         stage=Path(td)
         params_path=stage/'build_params.json'
         params_path.write_text(json.dumps(params, indent=2)+'\n', encoding='utf-8')
+        (stage/'elastic_core_dimensions.json').write_text(json.dumps(core_report, indent=2)+'\n', encoding='utf-8')
         if dimensions is not None:
             (stage/'section_dimensions.json').write_text(json.dumps(dimensions, indent=2)+'\n', encoding='utf-8')
         if params.get('show_preview', False) and not a.no_preview:
@@ -171,7 +181,7 @@ def main(argv=None):
             mujoco.mj_saveModel(model, str(stage/'spirob_aligned.mjb'), None)
         if a.cad:
             cad=[ROOT/'spirob/pipeline/cad_export.py','--in',csv,'--params',params_path,'--profile',a.cad_profile,
-                 '--neck-width-mm',a.neck_width_mm,'--cable-hole-diameter-mm',a.cable_hole_diameter_mm]
+                 '--elastic-core-percent',a.elastic_core_percent,'--cable-hole-diameter-mm',a.cable_hole_diameter_mm]
             if a.plain: cad.append('--plain')
             if a.fuse_cad: cad.append('--fuse')
             if a.iges: cad.append('--iges')
@@ -181,7 +191,7 @@ def main(argv=None):
         # Stages validated. Roll back replacements if publishing itself fails.
         backup=stage/'previous'; backup.mkdir()
         published=[]; moved=[]
-        names=['Geom_Data_CSV','meshes','spirob_physics_model.xml','build_params.json','section_dimensions.json','collision_summary.json','cad']
+        names=['Geom_Data_CSV','meshes','spirob_physics_model.xml','build_params.json','section_dimensions.json','collision_summary.json','elastic_core_dimensions.json','cad']
         # Always retire a previous MJB when rebuilding: it must never describe
         # an older robot than the XML/meshes in this output directory.
         names.append('spirob_aligned.mjb')

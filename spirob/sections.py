@@ -132,18 +132,13 @@ def linear_thickness_law(params, geometry=None):
     if geometry is None:
         from spirob.geometry import from_params
         geometry = from_params(params)
-    s = geometry.spiral
-    angle = geometry.inputs.delta_theta_rad
-    beta_minus_one = math.expm1(s.b*angle)
-    beta = 1 + beta_minus_one
-    radius = .5*s.a_m*(s.E+1)
-    chord = radius*math.hypot(beta*math.cos(angle)-1, beta*math.sin(angle))
-    z0 = geometry.units[0].local_frame_origin_m[2]
-    z1 = geometry.units[-1].slit_reference_m[2]
-    apex = z1 + chord/beta_minus_one
-    base = geometry.units[0].realized_width_m*resolve_flat_thickness_ratio(params, geometry)
-    return dict(z_base_m=z0, z_tip_m=z1, virtual_apex_z_m=apex,
-                base_thickness_m=base, slope_m_per_m=-base/(apex-z0))
+    from spirob.core import reference_width_law
+    width = reference_width_law(geometry)
+    ratio = resolve_flat_thickness_ratio(params, geometry)
+    return dict(z_base_m=width['z_base_m'], z_tip_m=width['z_tip_m'],
+                virtual_apex_z_m=width['virtual_apex_z_m'],
+                base_thickness_m=width['base_width_m']*ratio,
+                slope_m_per_m=width['slope_m_per_m']*ratio)
 
 
 def thickness_at_z(law, z):

@@ -52,6 +52,19 @@ try {
     ),
     true,
   );
+  await page.locator('details[data-group="fabrication"] summary').click();
+  await page.getByLabel("Elastic core / local width", {exact:true}).fill("8");
+  await page.waitForFunction(()=>window.spirob?.valid && window.spirob.params.build.elastic_core_percent===8);
+  const firstCore=await page.locator("#section").textContent();
+  await page.locator("#link").fill("18");
+  await page.locator("#link").dispatchEvent("input");
+  assert.notEqual(await page.locator("#section").textContent(),firstCore);
+  assert.match(await page.locator("#profiles").textContent(),/Core 8.00%/);
+  await page.getByLabel("Elastic core / local width", {exact:true}).fill("100");
+  assert.equal(await page.locator("#download").isDisabled(),true);
+  await page.getByLabel("Elastic core / local width", {exact:true}).fill("5");
+  await page.locator("#link").fill("2");
+  await page.locator("#link").dispatchEvent("input");
   const initial = await page.evaluate(() => window.spirob.geometry.b);
   await page.locator("#param-phi_deg").fill("8");
   await page.waitForFunction(
@@ -105,6 +118,8 @@ try {
     delete p[k];
   p.notch_factor = 0;
   p.post_gen.target_site_pos = [1, 2, 3];
+  delete p.build.elastic_core_percent;
+  p.build.neck_width_mm = .6;
   await page
     .locator("#file")
     .setInputFiles({
@@ -124,13 +139,16 @@ try {
     ),
     false,
   );
+  assert.equal(await page.evaluate(()=>"neck_width_mm" in window.spirob.params.build),false);
+  assert.ok(await page.evaluate(()=>window.spirob.params.build.elastic_core_percent>0));
+  delete p.build.neck_width_mm;
   // Browser build really creates an archive; a short whole-unit robot keeps CI bounded.
   p.L = 0.025;
   p.terminal_unit_policy = "whole_units";
   delete p.post_gen.target_site_pos;
   p.build.cad = true;
   p.build.iges = true;
-  p.build.neck_width_mm = 0.6;
+  p.build.elastic_core_percent = 5;
   await page
     .locator("#file")
     .setInputFiles({
@@ -226,7 +244,7 @@ try {
   });
   assert.deepEqual(errors, []);
   console.log(
-    "Browser checks passed: controls, validation, section selection, JSON import/export, persistence, obsolete target migration, mobile layout, static project subpath, and actual XML/STL/STEP/IGES ZIP download.",
+    "Browser checks passed: tapered-core percentage editing, narrowing sections, legacy core migration, controls, validation, section selection, JSON import/export, persistence, obsolete target migration, mobile layout, static project subpath, and actual XML/STL/STEP/IGES ZIP download.",
   );
 } finally {
   await browser?.close();

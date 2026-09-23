@@ -40,6 +40,7 @@
   "thickness_profile": "linear",
   "build": {
     "collision_mode": "convex",
-    "mesh_layout": "shared"
+    "mesh_layout": "shared",
+    "elastic_core_percent": 5.0
   }
 }

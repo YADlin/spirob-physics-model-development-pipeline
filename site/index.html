@@ -65,7 +65,7 @@
             ><input id="dimensions" type="checkbox" checked /> Dimensions</label
           ><label
             ><input id="routes" type="checkbox" checked /> Cable routes</label
-          ><label><input id="core" type="checkbox" /> Fabrication core</label
+          ><label><input id="core" type="checkbox" checked /> Fabrication core</label
           ><label
             >Inspect link
             <input id="link" type="range" min="1" max="21" value="2" /><output
@@ -160,7 +160,7 @@
               aria-label="Rotatable sampled SpiRob surface"
             ></canvas>
             <div class="card-note">
-              Sampled outer surface. Drilled channels and fused flexures are
+              Sampled outer surface and tapered core. Drilled channels and the final fused solid are
               verified in the generated CAD, not this preview.
             </div>
           </section>
@@ -210,6 +210,12 @@
             </div>
             <div id="constants" class="constants"></div>
           </div>
+        </section>
+        <section class="card equations">
+          <div class="card-heading"><div><h3>Elastic core: percentage of local width</h3>
+          <p>c(z) = (p / 100) Wref(z), with Wref(z) = Wbase (z* − z) / (z* − zbase).</p></div></div>
+          <p>The core width or diameter decreases linearly with axial distance. At complete-link stations it decreases geometrically, because successive links have unequal lengths. The two-cable core also follows the selected Y-thickness profile.</p>
+          <p>The gain law below remains an independent assumption: similar rotational flexures give K ∝ size³; the same damping scaling requires a viscoelastic model. Material constants and printed geometry still require calibration.</p>
         </section>
         <section class="card dynamics">
           <div class="card-heading">

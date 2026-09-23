@@ -1,4 +1,4 @@
-import { derive, section, clearance, radiusAt } from "./geometry.mjs";
+import { derive, section, clearance, radiusAt, coreWidthAt, coreSection } from "./geometry.mjs";
 const $ = (id) => document.getElementById(id),
   pi = Math.PI,
   mm = (x) => x * 1000,
@@ -66,6 +66,12 @@ function clean(p) {
     notice(
       "The obsolete target_site_pos was removed. New models contain no target site.",
     );
+  }
+  if (p.build && "neck_width_mm" in p.build) {
+    if ("elastic_core_percent" in p.build) throw Error("Choose elastic_core_percent or legacy neck_width_mm, not both.");
+    p.build.elastic_core_percent=100*p.build.neck_width_mm/(derive(p).width*1000);
+    delete p.build.neck_width_mm;
+    notice("Legacy core size converted to a width percentage: its base size is preserved and it now narrows toward the tip.");
   }
   return p;
 }
@@ -307,6 +313,8 @@ function configurationChecks() {
   )
     throw Error("Root quaternion must be nonzero.");
   const b = params.build ?? {};
+  if ("elastic_core_percent" in b && "neck_width_mm" in b)
+    throw Error("Choose elastic_core_percent or legacy neck_width_mm, not both.");
   if (
     (params.n_cables !== 2 || b.plain) &&
     (params.base_thickness_m != null ||
@@ -451,24 +459,15 @@ function drawProfiles() {
       svg += path(pts.map((v) => [x(v[2]), side - v[1] * sY]));
     }
   if ($("core").checked) {
-    const neck = (params.build?.neck_width_mm ?? 1) / 1000;
-    svg += poly(
-      [
-        [65, front - (neck * sY) / 2],
-        [725, front - (neck * sY) / 2],
-        [725, front + (neck * sY) / 2],
-        [65, front + (neck * sY) / 2],
-      ],
-      "core-shape",
-    );
-    svg += txt(
-      400,
-      front - 9,
-      `${params.n_cables === 2 ? "Elastic core width" : "Elastic core diameter"} = ${fmt(neck * 1000)} mm`,
-      "dim-text",
-      "middle",
-    );
+    const base=coreWidthAt(params,g,g.origin), tip=coreWidthAt(params,g,g.origin+g.length);
+    for (const centre of params.n_cables === 2 && !params.build?.plain ? [front] : [front,side])
+      svg += poly([[65,centre-base*sY/2],[725,centre-tip*sY/2],
+                   [725,centre+tip*sY/2],[65,centre+base*sY/2]], "core-shape");
+    svg += txt(400,350,
+      `Core ${fmt(params.build?.elastic_core_percent ?? 5)}% · base ${fmt(mm(base))} → tip ${fmt(mm(tip))} mm`,
+      "dim-text","middle");
   }
+
   const sectionZ =
     selected.z0 + ((selected.z1 - selected.z0) * +$("station").value) / 100;
   svg += `<line x1="${x(sectionZ)}" y1="38" x2="${x(sectionZ)}" y2="295" stroke="#d7912c" stroke-dasharray="4 4"/>`;
@@ -554,20 +553,9 @@ function drawSection() {
   }
   svg += poly(s.points.map(([x, y]) => [X(x), Y(y)]));
   if ($("core").checked) {
-    const half = s.neck / 2000;
-    if (params.n_cables === 2)
-      svg += poly(
-        [
-          [-half, -s.T / 2],
-          [half, -s.T / 2],
-          [half, s.T / 2],
-          [-half, s.T / 2],
-        ].map(([x, y]) => [X(x), Y(y)]),
-        "core-shape",
-      );
-    else
-      svg += `<circle cx="220" cy="175" r="${half * k}" class="core-shape"/>`;
+    svg += poly(s.corePoints.map(([x,y])=>[X(x),Y(y)]), "core-shape");
   }
+
   if ($("routes").checked)
     s.cables.forEach(([x, y], i) => {
       svg +=
@@ -745,7 +733,7 @@ function drawGains() {
   }
   $("gains").innerHTML = svg;
   $("gain-note").textContent =
-    `Protected base: K₁ = ${fmt(geom.gains[0].k, 3)}, D₁ = ${fmt(geom.gains[0].d, 3)}. ${(params.post_gen?.joint_beta ?? 1.03) === 1 ? "Flexible-joint gains are constant." : "Flexible-joint gains follow the exponential law."} Linear Y thickness does not imply linear stiffness.`;
+    `Protected base: K₁ = ${fmt(geom.gains[0].k, 3)}, D₁ = ${fmt(geom.gains[0].d, 3)}. ${(params.post_gen?.joint_beta ?? 1.03) === 1 ? "Flexible-joint gains are constant." : "Flexible-joint gains follow the exponential law."} Core width is linear in axial position. For similar elastic sections, rotational stiffness scales approximately with size cubed; damping needs a material assumption or measurement.`;
 }
 function make3D() {
   faces = [];
@@ -777,6 +765,17 @@ function make3D() {
       { pts: [...rings[0]].reverse(), index: u.index },
       { pts: rings.at(-1), index: u.index },
     );
+  }
+  if ($("core").checked) {
+    for (const u of g.units) {
+      const rings=[0,1].map(f=>coreSection(params,g,u,f).map(([x,y])=>
+        [x,y,u.z0+(u.z1-u.z0)*f-g.origin-g.length/2]));
+      for (let i=0;i<rings[0].length;i++) {
+        const j=(i+1)%rings[0].length;
+        faces.push({pts:[rings[0][i],rings[0][j],rings[1][j],rings[1][i]],index:u.index,core:true});
+      }
+      faces.push({pts:[...rings[0]].reverse(),core:true},{pts:rings[1],core:true});
+    }
   }
   if ($("routes").checked)
     for (let c = 0; c < params.n_cables; c++)
@@ -850,7 +849,7 @@ function draw3D() {
       shade =
         0.45 + 0.5 * Math.abs((0.3 * n[0] + 0.5 * n[1] + 0.8 * n[2]) / mag);
     const selected = f.index === +$("link").value - 1;
-    c.fillStyle = selected
+    c.fillStyle = f.core ? "#d79b3f" : selected
       ? `rgb(${Math.round(45 + 55 * shade)},${Math.round(128 + 75 * shade)},${Math.round(134 + 72 * shade)})`
       : `rgb(${Math.round(60 + 100 * shade)},${Math.round(101 + 105 * shade)},${Math.round(126 + 97 * shade)})`;
     c.fill();
@@ -1039,7 +1038,7 @@ for (const id of [
   "construction",
   "include-base",
 ])
-  $(id).oninput = () => render(id === "routes");
+  $(id).oninput = () => render(id === "routes" || id === "core");
 let drag = null;
 $("three").onpointerdown = (e) => {
   drag = { x: e.clientX, y: e.clientY, yaw: camera.yaw, pitch: camera.pitch };

@@ -65,6 +65,14 @@ def normalize_params(params):
             del result['post_gen']['target_site_pos']
             warnings.warn('post_gen.target_site_pos is retired and has been removed.', UserWarning)
     validate_schema(result)
+    build = result.get('build', {})
+    if 'neck_width_mm' in build:
+        from spirob.geometry import from_params
+        from spirob.core import resolve_core_percent
+        build['elastic_core_percent'] = resolve_core_percent(from_params(result),
+            build.get('elastic_core_percent'), build['neck_width_mm'])
+        del build['neck_width_mm']
+        warnings.warn('build.neck_width_mm now anchors the base of a tapered core; converted to elastic_core_percent.', UserWarning)
     quat = result.get('post_gen', {}).get('robot_quat')
     if quat is not None and not any(quat):
         raise ValueError('post_gen.robot_quat must be nonzero')

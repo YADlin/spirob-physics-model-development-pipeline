@@ -1,3 +1,5 @@
+> Historical audit for 090665f. For the 23 September tapered-core correction, see ELASTIC_CORE_UPDATE.md and the current README.
+
 # Branch audit and designer handoff
 
 Review base: `ad64c019504bbfcd32a7e879e224cb3c8105b9d3` on `fix/consolidation-cad-workflows`.
