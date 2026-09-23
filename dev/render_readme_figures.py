@@ -160,25 +160,22 @@ def figure_sections(params):
 def figure_fabrication(params):
     cases=[]
     for source in params[:2]:
-        p=copy.deepcopy(source);p['build'].update(neck_width_mm=2,cable_hole_diameter_mm=.8,cad=True);cases.append(p)
+        p=copy.deepcopy(source);p['build'].update(elastic_core_percent=5,cable_hole_diameter_mm=.8,cad=True);cases.append(p)
     values=samples(cases)
     fig,axes=plt.subplots(1,2,figsize=(12,5.5),layout='constrained')
     for p,value,ax in zip(cases,values,axes):
         s=value['s'];xy=np.asarray(s['points'])*1000
         ax.add_patch(Polygon(xy,fc='#dcebea',ec='#146d70',lw=1.6))
-        extent=max(abs(xy.ravel()));neck=p['build']['neck_width_mm']
-        if p['n_cables']==2:
-            ax.add_patch(Rectangle((-neck/2,-s['T']*500),neck,s['T']*1000,fc='#d4ae6b',alpha=.8))
-            text='Elastic core X width = 2 mm'
-        else:
-            ax.add_patch(Circle((0,0),neck/2,fc='#d4ae6b',alpha=.8));text='Elastic core diameter = 2 mm'
+        extent=max(abs(xy.ravel()));neck=s['neck']
+        ax.add_patch(Polygon(np.asarray(s['corePoints'])*1000,fc='#d4ae6b',alpha=.8))
+        text=f"Core {'X width' if p['n_cables']==2 else 'diameter'} = {neck:.3f} mm at this station (5%)"
         ax.annotate(text,(0,0),(0,extent*1.25),ha='center',arrowprops=dict(arrowstyle='->',color='#936d38'),fontsize=10)
         for c in s['cables']:ax.add_patch(Circle(np.asarray(c)*1000,.4,fc='white',ec='#a66023',lw=1.5))
         c=np.asarray(s['cables'][0])*1000
         ax.annotate('Cable hole Ø 0.8 mm',c,(-extent, -extent*1.25),ha='left',fontsize=10,arrowprops=dict(arrowstyle='->',color='#a66023'))
         ax.set_aspect('equal');ax.set_xlim(-extent*1.35,extent*1.35);ax.set_ylim(-extent*1.55,extent*1.5)
         ax.set_xlabel('X (mm)');ax.set_ylabel('Y (mm)');ax.set_title(f'{p["n_cables"]} cables · fabrication overlay')
-    fig.suptitle('The available elastic dimension is the central core',fontsize=18)
+    fig.suptitle('The elastic core is 5% of the local reference width',fontsize=18)
     fig.supxlabel('Mid-slice illustration. The core joins links in fabrication CAD; holes follow the routed path. These additions do not recalibrate simulation inertia.',fontsize=10)
     save(fig,'fabrication-parameters.png')
 

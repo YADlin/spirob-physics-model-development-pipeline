@@ -42,6 +42,7 @@ Every build compiles its XML before publishing outputs. Failed stages preserve t
 | `Geom_Data_CSV/` | Intermediate geometry table; useful for auditing, not required by the viewer. |
 | `collision_summary.json` | Contact geometry counts, mass isolation and arena allocation. |
 | `section_dimensions.json` | Two-cable base/tip thickness and per-link taper dimensions. |
+| `elastic_core_dimensions.json` | Core percentage, reference-width law and core dimensions at every joint and the tip. |
 | `cad/spirob.step`, `cad/spirob.stl` | Whole-robot manufacturing exports in **millimetres**, when CAD is enabled. |
 | `cad/spirob.iges` | Optional **surface** interchange in mm; STEP is preferred for solids. |
 | `cad/spirob_cad_report.json` | CAD validity, volumes, bounds, hashes and round-trip results. |
@@ -137,14 +138,36 @@ These keys belong inside a `"build": {...}` object. The two example build entrie
 | `align_geom_frames` | `false` | Additional version-specific aligned `.mjb`. Ordinary XML still uses MuJoCo's mesh principal frames. Usually leave off. |
 | `cad` | `false` | Enable whole-robot STEP and mm STL export plus validation report. |
 | `cad_profile` | `fabrication` | `fabrication` fuses a central elastic core and optional channels. `simulation` assembles the rigid link surfaces; it is not necessarily one printable part. |
-| `neck_width_mm` | `1` mm | Fabrication elastic core **X width for 2 cables**, **cylinder diameter for n≥3**. Must be positive. It is not the link Y thickness. |
+| `elastic_core_percent` | `5` (%) | Core **X width for 2 cables**, **diameter for n≥3**, as a percentage of the local continuous reference width. Strictly between 0 and 100; `5` means 5%. Narrows continuously from base to tip. |
 | `cable_hole_diameter_mm` | `0` mm | Fabrication channel diameter; 0 leaves CAD undrilled. Positive diameters require fabrication profile. Does not change tendon display width or simulation mass. |
 | `fuse_cad` | `false` | Fuse simulation-profile solids where possible. Fabrication is already fused. Requires CAD. |
 | `iges` | `false` | Also export IGES surfaces, in mm. Requires CAD; STEP remains the solid exchange format. |
 
 ![Core and cable-hole dimensions for two- and three-cable SpiRobs](docs/figures/fabrication-parameters.png)
 
-**What “elastic layer thickness” means here:** the implemented control is `neck_width_mm`, the finite central ligament/core. There is **no separate parameter for an axial elastic layer between rigid elements**. Changing this CAD dimension does not automatically identify a new spring/damping law. The browser labels the dimension that the generator actually supports.
+**The elastic core must taper.** At axial position $z$, its X width (two cables) or diameter (n cables) is
+
+$$c(z)=\frac{p}{100}W_{\mathrm{ref}}(z),\qquad
+W_{\mathrm{ref}}(z)=W_{\mathrm{base}}\frac{z_* - z}{z_* - z_{\mathrm{base}}}.$$
+
+Here $p$ is `elastic_core_percent`, and $z_*$ is the virtual apex beyond the tip. The reference width is the **continuous straightened, pre-notch envelope**, anchored to the base mounting width and the existing geometric similarity law. It is not the zero material width at a slit, the n-lobe notch clearance, or the XY bounding width of a clipped slice. All three fabrication formats use the same fused tapered solid.
+
+For the supplied standard geometry at 5%, the reference width decreases from **31.087574 mm to 6.923663 mm**, and the core width/diameter decreases from **1.554379 mm to 0.346183 mm**. Two-cable core Y thickness follows the chosen link-thickness profile; with the default linear profile both transverse dimensions decrease. Its hex ridge edges follow the existing ridge geometry. For n cables the core is a circular conical frustum. An explicitly selected legacy stepped/lens Y profile retains that Y behavior; the new core X width still tapers continuously.
+
+![Tapered fabrication cores and their measured joint sections](docs/figures/elastic-core-cad.png)
+
+```bash
+uv run python build.py --params examples/params-two-cable-hex.json --elastic-core-percent 5 --cad --iges --no-preview --output-dir build/tapered-core-two
+uv run python build.py --params examples/params-three-cable.json --elastic-core-percent 5 --cad --iges --no-preview --output-dir build/tapered-core-three
+```
+
+In JSON, set `"elastic_core_percent": 5` inside `build`. In the designer, expand **Elastic core & channels** and change **Elastic core / local width**. The core overlay, section dimensions and 3D core update together. Move the selected link and section station to see the narrowing. `elastic_core_dimensions.json` records joint-station values; the CAD report repeats the law used to construct the solid.
+
+**Old inputs:** `build.neck_width_mm` and `--neck-width-mm` are migration inputs specifying the **base** core dimension. They now convert to a percentage, preserving that base size while reducing the tip. A notice identifies the behavior change. Do not supply both the legacy size and the percentage. There is no constant-width core mode in new fabrication exports.
+
+**Original-author convention:** the inspected upstream DesignTool (`f563e69`) scales the half-taper angle by its “Elastic %”. Its corresponding width ratio is $\tan((p/100)\phi/2)/\tan(\phi/2)$, approximately $p/100$ for small angles. Our control explicitly specifies the width percentage requested here; the two numbers should not be treated as exactly identical. See [upstream DesignTool](https://github.com/ZhanchiWang/Open-Spiral-Robots/blob/f563e69f292a6b8cac1946dc45ad9e60d8795391/design-tool/DesignTool.py). The construction here is independent; no upstream implementation is copied.
+
+The core controls geometry, not a separately identified material layer. Changing its percentage does **not** automatically calibrate joint gains or add the fabrication core/hole mass to the simulation inertias.
 
 Cable-hole margin depends on the selected link, slice, notch shape, taper and hole diameter. The browser's XY clearance estimate is useful for locating thin walls, but is not a 3D minimum-wall or print-strength certification. Check the exported solid before printing.
 
@@ -166,7 +189,7 @@ uv run python tools/set_joint_gains.py --help
 uv run python tools/add_touch_sensors.py --help
 ```
 
-CLI names use hyphens: e.g. `--collision-mode convex`, `--arena-memory-mib 128`, `--neck-width-mm 1`. `--base-thickness-mm 20` converts mm to the JSON metre value; `--base-thickness-mm auto` restores thickness=width. `--hex-section` selects hex, `--safe/--fast/--high` select a preset, and `--nlobe` restores the cable-count-driven section after `build.plain`. `--no-cad`, `--no-iges`, `--no-fuse-cad`, and `--no-align-geom-frames` can disable JSON options. `--noclean` is a retained no-op: builds always use fresh staging.
+CLI names use hyphens: e.g. `--collision-mode convex`, `--arena-memory-mib 128`, `--elastic-core-percent 5`. `--base-thickness-mm 20` converts mm to the JSON metre value; `--base-thickness-mm auto` restores thickness=width. `--hex-section` selects hex, `--safe/--fast/--high` select a preset, and `--nlobe` restores the cable-count-driven section after `build.plain`. `--no-cad`, `--no-iges`, `--no-fuse-cad`, and `--no-align-geom-frames` can disable JSON options. `--noclean` is a retained no-op: builds always use fresh staging.
 
 ## Geometry equations
 
@@ -192,7 +215,24 @@ For base-to-tip joint number $i=1,\ldots,N$:
 
 $$K_i=K_0/\beta_j^{3(i-1)},\qquad D_i=D_0/\beta_j^{3(i-1)}.$$
 
-This is an **assumed exponential law** with the same exponent for damping and stiffness. It is not fitted automatically to the printed material or inferred from CAD. βⱼ is independent of geometric βg. There is no linear joint-gain mode; the linear option described earlier refers to **link thickness**. The example's j_001 overrides are applied after this law. For ball joints, damping applies to their three rotational degrees of freedom.
+This is an **assumed exponential law in joint index** with the same exponent for damping and stiffness. It is retained and tested in this update. It is not fitted automatically to the printed material or inferred from CAD. βⱼ is independent of geometric βg. There is no linear joint-gain mode; the linear option described earlier refers to **link thickness**. The example's j_001 overrides are applied after this law. For ball joints, damping applies to their three rotational degrees of freedom.
+
+### Why a linear core taper can coexist with exponential joint gains
+
+![Width versus distance, width versus link index, and joint gain decay](docs/figures/elastic-core-laws.png)
+
+Complete links occupy equal increments of spiral angle, **not equal axial distances**. Their sizes form a geometric sequence with tipward factor $s=1/\beta_g=e^{-b\Delta\theta}$. Sampling a linearly tapered width at these unequally spaced positions therefore gives an exponential sequence in link number. The partial base is handled by its actual length in the core geometry; it need not have the complete-link size ratio.
+
+| Quantity / coordinate | Reduction toward the tip |
+| --- | --- |
+| Core width/diameter versus straight axial position $z$ | **Linear**, to a virtual apex beyond the actual tip. |
+| Core width/diameter at corresponding complete-link stations | **Geometric / exponential**: one factor $1/\beta_g$ per link. |
+| Nominal similar core cross-sectional area versus $z$ | **Quadratic** when both transverse dimensions scale; legacy fixed-Y variants differ. Hex CAD ridge clipping can introduce small departures from perfect section similarity. |
+| Implemented stiffness and damping versus joint index | **Exponential**: one factor $1/\beta_j^3$ per joint, except explicit base overrides. |
+
+For geometrically similar elastic sections of the same material, rotational bending stiffness scales approximately as $K\sim EI/\ell$. When all dimensions scale by $s$, $I\sim s^4$ and $\ell\sim s$, hence $K\sim s^3$. A linear Kelvin–Voigt bending model with a constant material viscosity gives the same cubic scale for damping; real TPU damping must be measured. This is the physical motivation for the exponent **3**, not proof that the current coefficients reproduce the printed robot.
+
+`joint_beta` remains independent so existing calibrated/tuned configurations are preserved. To impose the complete-link similarity assumption, use the displayed **geometric βg** as `post_gen.joint_beta`. In the standard example βg ≈ **1.076353346**, while the retained example gain βj is **1.03**. They produce different gain reductions. With βj=βg, the ideal corresponding-station gain law is cubic in distance to the virtual apex; an arbitrary βj gives a different power of that distance. The current joint-index law is not corrected for a partial first link, and j_001 retains its independent mounting override. There is no claim of automatic physical calibration.
 
 Legacy presets are retained, with their limitations visible:
 

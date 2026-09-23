@@ -45,7 +45,7 @@ def model(tmp_path_factory):
     directory=tmp_path_factory.mktemp('model with spaces')
     p=json.loads((ROOT/'examples/params-three-cable.json').read_text())
     p.update(L=.025,terminal_unit_policy='whole_units',notch_factor=0)
-    p['build'].update(cad=True,iges=True,neck_width_mm=.6)
+    p['build'].update(cad=True,iges=True,elastic_core_percent=5.)
     params=directory/'my params.json';params.write_text(json.dumps(p))
     output=directory/'my model'
     result=subprocess.run([sys.executable,str(ROOT/'build.py'),'--params',str(params),

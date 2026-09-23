@@ -372,13 +372,14 @@
           "x-group": "build"
         },
         "neck_width_mm": {
-          "title": "Elastic core width / diameter",
-          "description": "Finite central ligament: X width for two cables, cylinder diameter for n cables. This is the available elastic-layer dimension; there is no independent inter-link layer-thickness setting.",
+          "title": "Legacy base core size",
+          "description": "Legacy base core width/diameter in mm. Imports convert this to a local-width percentage and taper it toward the tip.",
           "default": 1,
           "type": "number",
           "x-unit": "mm",
           "x-group": "fabrication",
-          "exclusiveMinimum": 0
+          "exclusiveMinimum": 0,
+          "x-hidden": true
         },
         "cable_hole_diameter_mm": {
           "title": "Cable channel diameter",
@@ -439,6 +440,16 @@
           "exclusiveMinimum": 0,
           "description": "Legacy fabrication-only override.",
           "x-hidden": true
+        },
+        "elastic_core_percent": {
+          "title": "Elastic core / local width",
+          "description": "Tapered core X width (2 cables) or diameter (n cables), as a percentage of the continuous pre-notch reference width at this axial position. 5 means 5%, not 0.05. Linear in axial distance; geometrically decreasing at complete-link stations. Does not identify material gains.",
+          "default": 5,
+          "type": "number",
+          "x-unit": "%",
+          "x-group": "fabrication",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 100
         }
       },
       "additionalProperties": false

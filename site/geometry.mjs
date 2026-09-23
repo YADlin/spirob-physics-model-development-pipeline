@@ -241,6 +241,29 @@ export function radiusAt(unit, z) {
   }
   return Math.max(0, ...hits);
 }
+export function referenceWidthAt(g, z) {
+  return g.width * (g.apex-z)/(g.apex-g.origin);
+}
+export function coreWidthAt(p, g, z) {
+  const percent = p.build?.elastic_core_percent ??
+    (p.build?.neck_width_mm !== undefined ? 100*p.build.neck_width_mm/(g.width*1000) : 5);
+  if (!Number.isFinite(percent) || percent <= 0 || percent >= 100)
+    throw Error("Elastic core percentage must be strictly between 0 and 100.");
+  return referenceWidthAt(g,z)*percent/100;
+}
+export function coreSection(p, g, u, fraction=0.5, samples=64) {
+  const z=u.z0+(u.z1-u.z0)*fraction, half=coreWidthAt(p,g,z)/2;
+  if (p.n_cables !== 2 || p.build?.plain)
+    return Array.from({length:samples},(_,i)=>[half*Math.cos(2*pi*i/samples),half*Math.sin(2*pi*i/samples)]);
+  const next=g.units[u.index+1], endT=next ? next.t0 : u.t1,
+    h=(u.t0+(endT-u.t0)*fraction)/2;
+  if (p.flat_section !== "hex") return [[-half,-h],[half,-h],[half,h],[-half,h]];
+  const edge=p.hex_edge_ratio ?? .75,
+    he0=u.t0/2*(1-(1-edge)*coreWidthAt(p,g,u.z0)/(2*u.radius)),
+    he1=endT/2*(1-(1-edge)*coreWidthAt(p,g,u.z1)/(2*(next?.radius ?? u.radius))),
+    he=he0+(he1-he0)*fraction;
+  return [[-half,-he],[0,-h],[half,-he],[half,he],[0,h],[-half,he]];
+}
 export function section(p, g, u, fraction = 0.5, samples = 128) {
   const z = u.z0 + (u.z1 - u.z0) * fraction,
     R = radiusAt(u, z),
@@ -254,7 +277,8 @@ export function section(p, g, u, fraction = 0.5, samples = 128) {
     cables: [],
     notches: [],
     polygon: [],
-    neck: p.build?.neck_width_mm ?? 1,
+    neck: coreWidthAt(p, g, z)*1000,
+    corePoints: coreSection(p,g,u,fraction),
     hole: p.build?.cable_hole_diameter_mm ?? 0,
   };
   for (const [a, b] of u.cable) {

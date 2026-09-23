@@ -34,6 +34,7 @@ build_manifest.json
 .pytest_cache/
 MUJOCO_LOG.TXT
 
+/elastic_core_dimensions.json
 /section_dimensions.json
 /collision_summary.json
 

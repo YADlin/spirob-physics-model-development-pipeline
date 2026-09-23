@@ -65,7 +65,7 @@ def _simulation_element_mm(unit, params, plain=False):
 
 
 def build_cad(units, geometry, params, *, profile='fabrication', plain=False,
-              flat_thickness_m=None, flat_edge_ratio=None, neck_width_mm=1.0,
+              flat_thickness_m=None, flat_edge_ratio=None, neck_width_mm=None, elastic_core_percent=None,
               cable_hole_diameter_mm=0.0, fuse=False):
     import cadquery as cq
     from spirob.sections import resolve_section_params
@@ -86,11 +86,17 @@ def build_cad(units, geometry, params, *, profile='fabrication', plain=False,
         raise ValueError('flat_edge_ratio must be in (0, 1]')
     thickness = _positive('flat_thickness_m', flat_thickness_m if flat_thickness_m is not None
                           else ratio*2*max(u.outer_radius_m for u in units))*1000
-    neck = _positive('neck_width_mm', neck_width_mm)
+    from spirob.core import resolve_core_percent, core_dimensions, reference_width_at
+    if elastic_core_percent is None and neck_width_mm is None:
+        elastic_core_percent = params.get('build', {}).get('elastic_core_percent')
+        neck_width_mm = params.get('build', {}).get('neck_width_mm')
+    percent = resolve_core_percent(geometry, elastic_core_percent, neck_width_mm)
+    core_report = core_dimensions(geometry, percent)
+    width_law = core_report['width_law']
+    def neck_at(z_mm):
+        return percent/100 * reference_width_at(width_law, z_mm/1000)*1000
     hole = _positive('cable_hole_diameter_mm', cable_hole_diameter_mm, True)
     n = geometry.inputs.n_cables
-    if neck >= geometry.lengths.realized_tip_width_m*1000:
-        raise ValueError('neck_width_mm must be smaller than the realized tip width')
     if profile == 'simulation' and (hole or flat_thickness_m is not None or flat_edge_ratio is not None):
         raise ValueError('Manufacturing thickness/hole overrides require profile=fabrication')
     from spirob.mesh_assets import mesh_assets
@@ -132,6 +138,7 @@ def build_cad(units, geometry, params, *, profile='fabrication', plain=False,
             nodes.append((units[-1].profile_xyz[1][2]*1000, units[-1].outer_radius_m*1000))
             wires = []
             for z, radius in nodes:
+                neck = neck_at(z)
                 h = thickness_at_z(law,z/1000)*500 if law else radius*ratio
                 he = h*(1-(1-params.get('hex_edge_ratio', 1.))*neck/(2*radius))
                 xy = [(-neck/2, -he), (0, -h), (neck/2, -he),
@@ -141,9 +148,12 @@ def build_cad(units, geometry, params, *, profile='fabrication', plain=False,
                 wires.append(cq.Wire.makePolygon([cq.Vector(x,y,z) for x,y in xy], close=True))
             core = cq.Solid.makeLoft(wires, ruled=True)
         elif n == 2 and not plain:
-            core = cq.Workplane('XY').box(neck, thickness, z1-z0, centered=(True,True,False)).translate((0,0,z0)).val()
+            wires = [cq.Wire.makePolygon([cq.Vector(x,y,z) for x,y in
+                     [(-neck_at(z)/2,-thickness/2),(neck_at(z)/2,-thickness/2),
+                      (neck_at(z)/2,thickness/2),(-neck_at(z)/2,thickness/2)]], close=True) for z in (z0,z1)]
+            core = cq.Solid.makeLoft(wires, ruled=True)
         else:
-            core = cq.Solid.makeCylinder(neck/2, z1-z0, cq.Vector(0,0,z0))
+            core = cq.Solid.makeCone(neck_at(z0)/2, neck_at(z1)/2, z1-z0, cq.Vector(0,0,z0))
         combined = core.fuse(*shapes).clean()
     elif fuse:
         combined = shapes[0].fuse(*shapes[1:]).clean()
@@ -175,7 +185,7 @@ def build_cad(units, geometry, params, *, profile='fabrication', plain=False,
                       'thickness_profile': params.get('thickness_profile','linear') if n == 2 and not plain else None,
                       'hex_edge_ratio': params.get('hex_edge_ratio') if hex_section else None,
                       'thickness_scales_with_link': (profile == 'simulation' or scaled_flat) if n == 2 and not plain else None, 'solid_count': solid_count, 'valid': True, 'unique_link_solids_built': len(templates) if templates else len(units),
-                      'neck_width_mm': neck if profile == 'fabrication' else None,
+                      'elastic_core': core_report if profile == 'fabrication' else None,
                       'cable_hole_diameter_mm': hole,
                       'flat_centre_thickness_mm': thickness if n == 2 and profile == 'fabrication' else None,
                       'flat_edge_ratio': (params['hex_edge_ratio'] if hex_section else 1. if scaled_flat else edge) if n == 2 and profile == 'fabrication' else None,
@@ -185,7 +195,7 @@ def build_cad(units, geometry, params, *, profile='fabrication', plain=False,
 def process_cad(csv_file, params, *, outdir='cad', prefix='spirob', fuse=False,
                 plain=False, stl_tolerance=1e-4, flat_thickness_m=None,
                 flat_edge_ratio=None, geometry=None, profile='fabrication',
-                neck_width_mm=1.0, cable_hole_diameter_mm=0.0, iges=False):
+                neck_width_mm=None, elastic_core_percent=None, cable_hole_diameter_mm=0.0, iges=False):
     import cadquery as cq
     import pandas as pd
     from spirob.geometry import from_params
@@ -201,7 +211,7 @@ def process_cad(csv_file, params, *, outdir='cad', prefix='spirob', fuse=False,
     units = build_unit_inputs(pd.read_csv(csv_file), geometry)
     shape, report = build_cad(units, geometry, params, profile=profile, plain=plain,
                              flat_thickness_m=flat_thickness_m, flat_edge_ratio=flat_edge_ratio,
-                             neck_width_mm=neck_width_mm, cable_hole_diameter_mm=cable_hole_diameter_mm,
+                             neck_width_mm=neck_width_mm, elastic_core_percent=elastic_core_percent, cable_hole_diameter_mm=cable_hole_diameter_mm,
                              fuse=fuse)
     # Origin at the base centre; CSV frame +Z points base -> tip. No post_gen pose.
     shape = shape.translate((0, 0, -geometry.units[0].local_frame_origin_m[2]*1000))
@@ -272,7 +282,8 @@ def main():
     p.add_argument('--plain',action='store_true', help='Use a circular revolved section')
     p.add_argument('--iges',action='store_true', help='Also export IGES surfaces in mm and validate round-trip dimensions')
     p.add_argument('--flat-thickness-m',type=float, help='Legacy fabrication lens thickness in metres; current sections use base-thickness-mm'); p.add_argument('--flat-edge-ratio',type=float, help='Legacy fabrication lens edge / centre thickness in (0,1]')
-    p.add_argument('--neck-width-mm',type=float,default=1.0, help='Fabrication elastic core: X width for two cables or diameter for n cables, in mm')
+    p.add_argument('--neck-width-mm',type=float, help='Legacy base core width/diameter in mm; converted to a tapered width percentage')
+    p.add_argument('--elastic-core-percent',type=float, help='Core X width (2 cables) or diameter (n cables) as percent of local reference width; default 5')
     p.add_argument('--cable-hole-diameter-mm',type=float,default=0.0, help='Fabrication cable channel diameter in mm; zero means no drilling')
     from spirob.sections import section_arguments, resolve_section_params
     section_arguments(p)
@@ -282,6 +293,6 @@ def main():
     process_cad(a.input,params,outdir=a.outdir,
                 prefix=a.prefix,fuse=a.fuse,plain=a.plain,profile=a.profile,
                 flat_thickness_m=a.flat_thickness_m,flat_edge_ratio=a.flat_edge_ratio,
-                neck_width_mm=a.neck_width_mm,cable_hole_diameter_mm=a.cable_hole_diameter_mm,iges=a.iges)
+                neck_width_mm=a.neck_width_mm,elastic_core_percent=a.elastic_core_percent,cable_hole_diameter_mm=a.cable_hole_diameter_mm,iges=a.iges)
 
 if __name__=='__main__': main()
