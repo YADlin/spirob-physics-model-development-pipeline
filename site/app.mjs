@@ -1,3 +1,4 @@
+import { designReport } from "./report.mjs";
 import { derive, section, clearance, radiusAt, coreWidthAt, coreSection } from "./geometry.mjs";
 const $ = (id) => document.getElementById(id),
   pi = Math.PI,
@@ -963,6 +964,7 @@ function render(rebuild3 = true) {
     $("errors").hidden = false;
   }
   $("download").disabled = !valid;
+  $("download-report").disabled = !valid;
   $("copy-json").disabled = !valid;
   $("generate").disabled = !valid || !!activeJob;
 }
@@ -997,6 +999,13 @@ async function copy(text, button) {
 }
 $("download").onclick = () =>
   download("params.json", JSON.stringify(params, null, 2) + "\n");
+$("download-report").onclick = async (event) => {
+  if (!valid) return;
+  const button=event.currentTarget; button.disabled=true;
+  try { download("spirob-design-report.zip", await designReport(params,geom,schema), "application/zip"); }
+  catch(e) { notice("Report export failed: " + e.message); }
+  finally { button.disabled=!valid; }
+};
 $("copy-json").onclick = (e) => copy(JSON.stringify(params, null, 2), e.target);
 $("copy-command").onclick = (e) => copy($("command").textContent, e.target);
 $("apply-json").onclick = () => {

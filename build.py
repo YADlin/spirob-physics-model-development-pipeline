@@ -188,13 +188,15 @@ def main(argv=None):
             for key in ('flat_thickness_m','flat_edge_ratio'):
                 if getattr(a,key) is not None: cad.extend(['--'+key.replace('_','-'),getattr(a,key)])
             run_step(cad,'Export CAD in millimetres',stage)
+        from spirob.build_report import write_build_report
+        write_build_report(stage, params, geometry, model)
         # Stages validated. Roll back replacements if publishing itself fails.
         backup=stage/'previous'; backup.mkdir()
         published=[]; moved=[]
         names=['Geom_Data_CSV','meshes','spirob_physics_model.xml','build_params.json','section_dimensions.json','collision_summary.json','elastic_core_dimensions.json','cad']
         # Always retire a previous MJB when rebuilding: it must never describe
         # an older robot than the XML/meshes in this output directory.
-        names.append('spirob_aligned.mjb')
+        names.extend(['spirob_aligned.mjb', 'design_report', 'design_report.zip'])
         try:
             for name in names:
                 dest=output/name

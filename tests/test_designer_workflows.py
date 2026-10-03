@@ -1,5 +1,7 @@
 """User workflow regressions for the consolidated CLI and local designer."""
 import copy
+import hashlib
+import zipfile
 import http.client
 import json
 from pathlib import Path
@@ -69,6 +71,24 @@ def test_build_json_generates_zero_notch_cad_and_iges(model):
     assert saved['build']['collision_mode']=='convex' and saved['build']['iges']
 
 
+def test_completed_report_identifies_outputs_and_parameters(model):
+    folder,_=model
+    raw=(folder/'build_params.json').read_bytes()
+    assert (folder/'design_report/params.json').read_bytes()==raw
+    with zipfile.ZipFile(folder/'design_report.zip') as archive:
+        assert archive.testzip() is None
+        text=archive.read('report.md').decode()
+        assert hashlib.sha256(raw).hexdigest() in text
+        assert 'Completed build record' in text
+        assert len([n for n in archive.namelist() if n.endswith('.svg')])==5
+        checksums=json.loads(archive.read('output_checksums.json'))
+        for name,digest in checksums.items():
+            assert hashlib.sha256((folder/name).read_bytes()).hexdigest()==digest
+        assert 'cad/spirob.iges' in checksums
+        assert 'spirob_physics_model.xml' in checksums
+        assert '<svg' in archive.read('report.html').decode()
+
+
 def test_touch_regions_preserve_existing_sensors_and_physics(model,tmp_path):
     folder,_=model;source=folder/'spirob_physics_model.xml'
     # Use the existing safe path rebasing helper to keep real assets resolvable.
@@ -101,6 +121,9 @@ def test_rebuild_retires_stale_cad_and_cli_overrides_json(model,tmp_path):
     saved=json.loads((folder/'build_params.json').read_text())
     assert not saved['build']['cad'] and saved['build']['collision_mode']=='capsule'
     mujoco.MjModel.from_xml_path(str(folder/'spirob_physics_model.xml'))
+    assert json.loads((folder/'design_report/params.json').read_text())==saved
+    hashes=json.loads((folder/'design_report/output_checksums.json').read_text())
+    assert not any(name.startswith('cad/') for name in hashes)
 
 
 def test_builder_rejects_other_origins_and_bad_host(tmp_path):
