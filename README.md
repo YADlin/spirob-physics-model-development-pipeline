@@ -386,3 +386,42 @@ For contributor changes, create a branch, run relevant tests, review `git diff`,
 This is an independent MIT implementation extending the geometry and naming conventions of this repository. The original design and research are credited to [Zhanchi Wang, Nikolaos M. Freris and Xi Wei](https://arxiv.org/abs/2303.09861); their [Open-Spiral-Robots repository](https://github.com/ZhanchiWang/Open-Spiral-Robots) remains a separate project with its own license. Its noncommercial source is not incorporated here. CADQuery/OpenCascade, MuJoCo and other dependencies retain their respective licenses.
 
 Remaining physical work includes experimental stiffness/damping identification, printed-part inertia calibration, and contact validation in deep concavities. The current n-lobe CAD path retains individual solid construction: extending shared-solid reuse showed small numerical volume differences and is deferred until independently resolved.
+
+
+## Downloadable design and build records
+
+Every successful `build.py` run now saves `design_report/report.md`, its figures,
+a self-contained `design_report/report.html`, and a portable `design_report.zip`
+inside the output directory. This also applies to the local designer's model ZIP
+and the **Generate SpiRob model** GitHub Actions artifact. No extra flag or Node
+installation is needed for terminal report generation.
+
+```bash
+uv run python build.py --params params.json --no-preview --output-dir build/my-spirob
+xdg-open build/my-spirob/design_report/report.html
+```
+
+The HTML copy includes **Print / Save as PDF**. Select **Save to PDF** in the
+browser print dialog. For Markdown, keep `report.md` beside its `figures/` folder;
+share `design_report.zip` to preserve those links.
+
+On the website, click **Download design report** beside **Copy JSON**. This works
+on GitHub Pages without a Python server. Extract the downloaded ZIP and open
+`report.html` or `report.md`. It records the selected link/station and current
+label, core overlay and camera settings; turn on the annotations you want before
+exporting. It includes the exact current SVG views and a 3D snapshot.
+
+The website-only download is labelled **design preview** because no model build
+has run. The report in a generated model ZIP is a **completed build record**:
+resolved JSON includes command-line overrides, while joint gains and timestep
+are read from the compiled MJCF. Terminal figures show actual simulation meshes,
+representative mid-sections, core reference dimensions, spiral and gains; they
+are not screenshots of a user's browser camera or fabrication hole verification.
+Both records include creation time, parameter SHA-256, spiral constants and
+modelling assumptions. Completed reports also include source revision and
+`output_checksums.json`, identifying the generated files. Subsequent manual XML
+or CAD edits do not revise the original report.
+
+After applying this update, deploy **Deploy SpiRob designer → Run workflow → main**
+to publish the new report button. Updating the repository alone does not publish
+the website.

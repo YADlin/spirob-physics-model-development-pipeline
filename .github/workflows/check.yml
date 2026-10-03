@@ -39,6 +39,8 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Exercise the designer and download a real model
         run: node dev/browser/check.mjs
+      - name: Export and print a static website report
+        run: node dev/browser/check-report.mjs
       - name: Preserve review screenshots and model
         if: always()
         uses: actions/upload-artifact@v7
