@@ -140,6 +140,8 @@ def write_build_report(stage, params, geometry, model):
            'K_i = K0 / beta_j^(3(i−1)); D_i = D0 / beta_j^(3(i−1)); protected base overrides apply. These are assumptions, not material calibration.',
            'Drawings use compiled simulation meshes; core dimensions are reference overlays. Fabrication channels/core are not simulation mass/contact geometry. CAD is in mm; simulation geometry is in metres.',
            'The report records the files at build time. Later edits with joint/sensor tools do not update this record; regenerate the build for a new record.']
+    if params.get('thickness_profile') == 'constant':
+        notes.append('Constant Y thickness breaks uniform geometric similarity. The existing cubic gain-decay assumption must be calibrated independently for this design.')
     manifest={p.relative_to(stage).as_posix():hashlib.sha256(p.read_bytes()).hexdigest()
               for p in sorted(stage.rglob('*')) if p.is_file() and not p.is_relative_to(out)}
     (out/'output_checksums.json').write_text(json.dumps(manifest,indent=2)+'\n')

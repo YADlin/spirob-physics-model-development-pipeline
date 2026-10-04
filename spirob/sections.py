@@ -9,8 +9,8 @@ import math
 
 
 def section_arguments(parser):
-    parser.add_argument('--thickness-profile', choices=['linear', 'stepped'],
-                        help='Two-cable axial thickness: continuous linear taper (default), or legacy stepped links')
+    parser.add_argument('--thickness-profile', choices=['linear', 'constant', 'stepped'],
+                        help='Two-cable axial thickness: linear taper (default), constant base-to-tip thickness, or legacy stepped links')
     parser.add_argument('--base-thickness-mm', metavar='MM|auto',
                         help='Two-cable centre thickness at the base mounting plane in mm; auto equals base width')
     parser.add_argument('--hex-section', action='store_true',
@@ -26,8 +26,8 @@ def resolve_section_params(params, *, hex_section=False, hex_edge_ratio=None,
     if thickness_profile is not None:
         result['thickness_profile'] = thickness_profile
     profile = result.get('thickness_profile', 'linear')
-    if profile not in ('linear', 'stepped'):
-        raise ValueError('thickness_profile must be linear or stepped')
+    if profile not in ('linear', 'constant', 'stepped'):
+        raise ValueError('thickness_profile must be linear, constant or stepped')
     if 'thickness_profile' in result and (result.get('n_cables') != 2 or plain):
         raise ValueError('thickness_profile requires n_cables=2 without --plain')
     if base_thickness_mm is not None:
@@ -103,7 +103,7 @@ def section_dimensions(params, geometry=None):
                   centre_thickness_m=u.realized_width_m*ratio,
                   edge_thickness_m=u.realized_width_m*ratio*edge) for u in geometry.units]
     profile = params.get('thickness_profile', 'linear')
-    law = linear_thickness_law(params, geometry) if profile == 'linear' else None
+    law = axial_thickness_law(params, geometry) if profile != 'stepped' else None
     for record, unit in zip(links, geometry.units):
         z0, z1 = unit.local_frame_origin_m[2], unit.slit_reference_m[2]
         t0, t1 = (thickness_at_z(law, z) for z in (z0, z1)) if law else (record['centre_thickness_m'],)*2
@@ -139,6 +139,14 @@ def linear_thickness_law(params, geometry=None):
                 virtual_apex_z_m=width['virtual_apex_z_m'],
                 base_thickness_m=width['base_width_m']*ratio,
                 slope_m_per_m=width['slope_m_per_m']*ratio)
+
+
+def axial_thickness_law(params, geometry=None):
+    """Continuous Y thickness: a linear taper or the same base value everywhere."""
+    law = linear_thickness_law(params, geometry)
+    if params.get('thickness_profile') == 'constant':
+        law['slope_m_per_m'] = 0.0
+    return law
 
 
 def thickness_at_z(law, z):

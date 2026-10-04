@@ -173,7 +173,7 @@ function form() {
         for (const v of f.enum) {
           const o = document.createElement("option");
           o.value = v;
-          o.textContent = v.replaceAll("_", " ");
+          o.textContent = f["x-enum-labels"]?.[v] ?? v.replaceAll("_", " ");
           control.append(o);
         }
         control.value =
@@ -529,7 +529,7 @@ function drawProfiles() {
         }),
     );
   $("profile-note").textContent =
-    `${g.partial ? "Partial base with flat mount." : "Complete base unit."} φ = ${fmt(params.phi_deg)}° applies to the continuous taper. ${params.n_cables === 2 ? "YZ shows the centre-thickness envelope; XZ shows the joint slits." : "Both side profiles sample the cut n-lobe surface. Wbase is the revolved reference width."}`;
+    `${g.partial ? "Partial base with flat mount." : "Complete base unit."} φ = ${fmt(params.phi_deg)}° applies to the continuous taper. ${params.n_cables === 2 ? "YZ shows the selected centre-thickness law; constant gives equal base and tip thickness. XZ shows the joint slits." : "Both side profiles sample the cut n-lobe surface. Wbase is the revolved reference width."}`;
 }
 function drawSection() {
   const u = geom.units[+$("link").value - 1],
@@ -734,7 +734,7 @@ function drawGains() {
   }
   $("gains").innerHTML = svg;
   $("gain-note").textContent =
-    `Protected base: K₁ = ${fmt(geom.gains[0].k, 3)}, D₁ = ${fmt(geom.gains[0].d, 3)}. ${(params.post_gen?.joint_beta ?? 1.03) === 1 ? "Flexible-joint gains are constant." : "Flexible-joint gains follow the exponential law."} Core width is linear in axial position. For similar elastic sections, rotational stiffness scales approximately with size cubed; damping needs a material assumption or measurement.`;
+    `Protected base: K₁ = ${fmt(geom.gains[0].k, 3)}, D₁ = ${fmt(geom.gains[0].d, 3)}. ${(params.post_gen?.joint_beta ?? 1.03) === 1 ? "Flexible-joint gains are constant." : "Flexible-joint gains follow the exponential law."} Core width is linear in axial position. For similar elastic sections, rotational stiffness scales approximately with size cubed; damping needs a material assumption or measurement.${params.thickness_profile === "constant" ? " Constant Y thickness breaks uniform geometric similarity: the cubic gain scaling is not derived from this profile." : ""}`;
 }
 function make3D() {
   faces = [];

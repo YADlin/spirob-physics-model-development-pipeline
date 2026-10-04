@@ -82,7 +82,7 @@
     },
     "base_thickness_m": {
       "title": "Base centre thickness",
-      "description": "Full Y thickness at the base mounting plane. Auto sets it equal to the generated base width. The tip thickness is derived.",
+      "description": "Full Y thickness at the base mounting plane. Auto sets it equal to the generated base width. The tip thickness is derived. In constant mode this is the thickness of every link, from base to tip.",
       "default": null,
       "type": [
         "number",
@@ -95,16 +95,22 @@
     },
     "thickness_profile": {
       "title": "Axial thickness law",
-      "description": "Linear tapers within links and across joints. Stepped keeps each link at constant thickness for legacy comparison. Geometry scaling is separate from the joint gain law.",
+      "description": "Constant keeps the same Y thickness from base to tip. Linear tapers continuously. Stepped makes each link flat but thinner toward the tip. Choose rectangular section for entirely flat parallel faces; set Base centre thickness for the desired thickness. Width and core X width still taper.",
       "default": "linear",
       "type": "string",
       "x-unit": "",
       "x-group": "section",
       "enum": [
         "linear",
+        "constant",
         "stepped"
       ],
-      "x-cables": "two"
+      "x-cables": "two",
+      "x-enum-labels": {
+        "linear": "Linear taper",
+        "constant": "Constant \u2014 same thickness throughout",
+        "stepped": "Stepped \u2014 thinner link by link"
+      }
     },
     "flat_section": {
       "title": "Two-cable section",

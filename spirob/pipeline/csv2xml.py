@@ -197,14 +197,14 @@ def write_mjcf_from_sites_csv(
         raise ValueError('timestep must be finite and positive')
     if config.flat_section not in ('rectangular', 'hex'):
         raise ValueError('flat_section must be rectangular or hex')
-    if config.thickness_profile not in ('linear', 'stepped'):
-        raise ValueError('thickness_profile must be linear or stepped')
+    if config.thickness_profile not in ('linear', 'constant', 'stepped'):
+        raise ValueError('thickness_profile must be linear, constant or stepped')
     if config.flat_section == 'hex' and (plain or n_cables != 2):
         raise ValueError('hex section requires n_cables=2 without plain')
     if config.flat_section == 'hex' and config.physics_mode == 'compound':
         raise ValueError('Hex-section compound colliders are not implemented; use convex collision')
-    if config.thickness_profile == 'linear' and config.physics_mode == 'compound':
-        raise ValueError('Linear-taper compound colliders are not implemented; use convex collision')
+    if config.thickness_profile != 'stepped' and config.physics_mode == 'compound':
+        raise ValueError('Compound colliders for linear/constant profiles are not implemented; use legacy stepped thickness or use convex collision for linear/constant profiles')
     margin = config.collision_margin_m
     if margin is None:
         margin = 0.0 if config.physics_mode in ('compound', 'convex') else config.geom_margin
@@ -300,6 +300,9 @@ def write_mjcf_from_sites_csv(
         if config.physics_mode == 'compound' and not np.all(scale == 1):
             raise ValueError('Compound collision requires native metre-scale meshes; change geometry parameters to resize')
         scale *= sources[i].scale if sources else 1.0
+        if sources and n_cables == 2 and not plain and config.thickness_profile == 'constant':
+            # Shared links scale in X/Z only: every source already has the full Y thickness.
+            scale[1] /= sources[i].scale
         if config.physics_mode == 'convex':
             source_path = os.path.abspath(mesh_file)
             if source_path not in hull_cache:
