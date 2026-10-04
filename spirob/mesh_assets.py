@@ -15,7 +15,9 @@ class MeshAsset:
 def mesh_assets(geometry, layout='shared'):
     """Keep link asset names while sharing one complete-link STL on disk.
 
-    Scale belongs to the MJCF mesh asset, not to a mesh geom. MuJoCo therefore
+    The recorded scale describes the XZ profile. The MJCF writer keeps Y scale
+    at one for constant-thickness flat links. Scale belongs to the MJCF mesh
+    asset, not to a mesh geom. MuJoCo therefore
     still compiles a separate scaled asset for each link size. Partial units
     always retain their own STL. Reject loss of similarity rather than silently
     approximating a changed geometry with the template.

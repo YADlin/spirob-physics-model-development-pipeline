@@ -545,13 +545,13 @@ def draw_nlobe_section_preview(quads, params,
 
 def draw_flat_section(ax, outer_radius, params, title="", quad=None):
     """Draw the section envelope at an explicit axial station, in millimetres."""
-    from spirob.sections import resolve_flat_thickness_ratio, resolve_section_params, linear_thickness_law, thickness_at_z
+    from spirob.sections import resolve_flat_thickness_ratio, resolve_section_params, axial_thickness_law, thickness_at_z
     params = resolve_section_params(params)
     r = float(outer_radius)*1000
     h = r*resolve_flat_thickness_ratio(params)
     station = None
-    if params.get('thickness_profile', 'linear') == 'linear':
-        law = linear_thickness_law(params)
+    if params.get('thickness_profile', 'linear') != 'stepped':
+        law = axial_thickness_law(params)
         # The midpoint of the outer edge has the full X width. At a hinge
         # the slit closes to X=0, so a full hex there would be misleading.
         station = (float(quad[2][1])+float(quad[3][1]))/2 if quad is not None else law['z_base_m']

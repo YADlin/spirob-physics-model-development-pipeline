@@ -425,3 +425,33 @@ or CAD edits do not revise the original report.
 After applying this update, deploy **Deploy SpiRob designer → Run workflow → main**
 to publish the new report button. Updating the repository alone does not publish
 the website.
+
+
+## Two-cable constant thickness (parallel flat faces)
+
+On the website choose **2 cables · rectangular**, then under **Cross-section**:
+set **Axial thickness law → constant**, disable **Base centre thickness automatic**,
+and enter the desired thickness in mm. For example, 3 mm gives a 3 mm Y thickness
+at the base, every intermediate link, and the tip. The side profile, cross-section,
+3D preview, JSON and downloadable report all reflect this selection.
+
+![Constant 3 mm thickness: the YZ faces stay parallel while XZ width tapers](docs/figures/constant-thickness.png)
+
+```bash
+uv run python build.py --params examples/params-two-cable.json \
+  --thickness-profile constant --base-thickness-mm 3 \
+  --cad --iges --no-preview --output-dir build/flat-3mm
+```
+
+This applies to simulation meshes, collision hulls, and fabrication STEP/STL/IGES.
+Shared meshes retain their full Y thickness and scale only in X and Z.
+`constant` is different from `stepped`: stepped links become thinner toward the
+tip. The XZ width taper, slits and percentage-based core X width still narrow
+normally. Rectangular sections give parallel flat outer faces; a hex section
+retains its transverse ridges, with constant centre and edge thickness along Z.
+Automatic thickness uses the base width as the constant thickness.
+
+Joint gains remain independently configured. Constant Y thickness breaks the
+all-dimensions-similar assumption behind cubic stiffness scaling; calibrate the
+gains for the manufactured design rather than treating the existing exponential
+law as a consequence of this geometry. Deploy the updated website after merging.

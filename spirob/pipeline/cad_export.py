@@ -44,8 +44,8 @@ def _simulation_element_mm(unit, params, plain=False):
     from spirob.pipeline.csv2geom_nlobe import build_flat_element, make_profile_from_points, revolve_profile, add_nlobe_cut
     n = params['n_cables']
     if n == 2 and not plain:
-        from spirob.sections import resolve_flat_thickness_ratio, linear_thickness_law, thickness_at_z
-        law = linear_thickness_law(params) if params.get('thickness_profile', 'linear') == 'linear' else None
+        from spirob.sections import resolve_flat_thickness_ratio, axial_thickness_law, thickness_at_z
+        law = axial_thickness_law(params) if params.get('thickness_profile', 'linear') != 'stepped' else None
         endpoints = tuple(thickness_at_z(law, unit.profile_xyz[j][2]) for j in (0,1)) if law else None
         shape = build_flat_element(unit.row, resolve_flat_thickness_ratio(params),
                                    hex_edge_ratio=params.get('hex_edge_ratio') if params.get('flat_section') == 'hex' else None,
@@ -72,11 +72,11 @@ def build_cad(units, geometry, params, *, profile='fabrication', plain=False,
     params = resolve_section_params(params, plain=plain)
     hex_section = params.get('flat_section') == 'hex'
     n = geometry.inputs.n_cables
-    from spirob.sections import resolve_flat_thickness_ratio, linear_thickness_law, thickness_at_z
+    from spirob.sections import resolve_flat_thickness_ratio, axial_thickness_law, thickness_at_z
     ratio = resolve_flat_thickness_ratio(params, geometry) if n == 2 and not plain else .3
-    linear = n == 2 and not plain and params.get('thickness_profile', 'linear') == 'linear'
-    law = linear_thickness_law(params, geometry) if linear else None
-    scaled_flat = n == 2 and not plain and (linear or hex_section or 'base_thickness_m' in params or 'flat_thickness_ratio' not in params)
+    continuous = n == 2 and not plain and params.get('thickness_profile', 'linear') != 'stepped'
+    law = axial_thickness_law(params, geometry) if continuous else None
+    scaled_flat = n == 2 and not plain and (continuous or hex_section or 'base_thickness_m' in params or 'flat_thickness_ratio' not in params)
     if scaled_flat and (flat_thickness_m is not None or flat_edge_ratio is not None):
         raise ValueError('Use --base-thickness-mm and --hex-edge-ratio with this section, not legacy manufacturing-only flat overrides')
     if profile not in ('fabrication', 'simulation'):
@@ -107,7 +107,8 @@ def build_cad(units, geometry, params, *, profile='fabrication', plain=False,
         if profile == 'fabrication' and n == 2 and not plain and not scaled_flat:
             # Legacy constant-thickness manufacturing lens is not uniformly similar.
             shape = _lens_element_mm(unit, thickness, edge)
-        elif n != 2 or plain:
+        elif n != 2 or plain or params.get('thickness_profile') == 'constant':
+            # Constant Y cannot use uniform XYZ scaling of a template.
             # OCC's curved n-lobe booleans show small volume differences when
             # scaled after construction. Preserve individual CAD construction
             # until that numerical contract is separately established.

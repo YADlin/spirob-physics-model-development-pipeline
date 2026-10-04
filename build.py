@@ -122,8 +122,8 @@ def main(argv=None):
     dimensions = None
     if params['n_cables'] == 2 and not a.plain:
         params.setdefault('thickness_profile', 'linear')
-        if params['thickness_profile'] == 'linear' and a.collision_mode == 'compound':
-            p.error('Linear-taper compound colliders are not implemented; use --collision-mode convex')
+        if params['thickness_profile'] != 'stepped' and a.collision_mode == 'compound':
+            p.error('Compound colliders for linear/constant profiles are not implemented; use legacy stepped thickness or use --collision-mode convex for linear/constant profiles')
         from spirob.sections import section_dimensions
         dimensions = section_dimensions(params, geometry)
         print(f"Base centre thickness: {dimensions['base']['centre_thickness_m']*1000:.6f} mm; "

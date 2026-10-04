@@ -143,7 +143,7 @@ export function derive(p) {
   const thickness = p.base_thickness_m ?? width * (p.flat_thickness_ratio ?? 1);
   if (!Number.isFinite(thickness) || thickness <= 0)
     throw Error("Base thickness must be positive, or auto.");
-  const thicknessAt = (z) => (thickness * (apex - z)) / (apex - origin);
+  const thicknessAt = (z) => p.thickness_profile === "constant" ? thickness : (thickness * (apex - z)) / (apex - origin);
   const units = quads.map((quad, i) => {
     const z0 = quad[0][1],
       z1 = quad[1][1],

@@ -463,9 +463,9 @@ def process_csv(csv_file, outdir="meshes", revolve_axis="y", angle=360,
         from spirob.sections import resolve_flat_thickness_ratio
         flat_thickness_ratio = resolve_flat_thickness_ratio(section_params, geometry)
     law = None
-    if n_cables == 2 and not plain and params is not None and section_params.get('thickness_profile', 'linear') == 'linear':
-        from spirob.sections import linear_thickness_law, thickness_at_z
-        law = linear_thickness_law(section_params, geometry)
+    if n_cables == 2 and not plain and params is not None and section_params.get('thickness_profile', 'linear') != 'stepped':
+        from spirob.sections import axial_thickness_law, thickness_at_z
+        law = axial_thickness_law(section_params, geometry)
     draft_angle_deg = phi_deg / 2.0
     flat_mode       = (not plain) and (n_cables <= 2)
 
