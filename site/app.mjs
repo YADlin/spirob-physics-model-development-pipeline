@@ -1,3 +1,4 @@
+import { boreAxes, boreEllipse } from "./holes.mjs";
 import { designReport } from "./report.mjs";
 import { derive, section, clearance, radiusAt, coreWidthAt, coreSection } from "./geometry.mjs";
 const $ = (id) => document.getElementById(id),
@@ -469,6 +470,10 @@ function drawProfiles() {
       "dim-text","middle");
   }
 
+  if ($("holes").checked && params.build?.cable_hole_diameter_mm > 0) {
+    for(const axis of boreAxes(g)) for(const [component,centre] of [[0,front],[1,side]])
+      svg+=`<line x1="${x(axis.base[2])}" y1="${centre-axis.base[component]*sY}" x2="${x(axis.tip[2])}" y2="${centre-axis.tip[component]*sY}" stroke="#9d5429" stroke-width="1.5" stroke-dasharray="6 3"/>`;
+  }
   const sectionZ =
     selected.z0 + ((selected.z1 - selected.z0) * +$("station").value) / 100;
   svg += `<line x1="${x(sectionZ)}" y1="38" x2="${x(sectionZ)}" y2="295" stroke="#d7912c" stroke-dasharray="4 4"/>`;
@@ -557,10 +562,17 @@ function drawSection() {
     svg += poly(s.corePoints.map(([x,y])=>[X(x),Y(y)]), "core-shape");
   }
 
+  if ($("holes").checked && s.holeOutlines.length) {
+    const border=s.points.map(([x,y],i)=>`${i?'L':'M'} ${X(x)} ${Y(y)}`).join(' ')+' Z';
+    // Clip the bore opening to the actual outer/core section; never paint an external disk.
+    const core=s.corePoints.map(([x,y],i)=>`${i?'L':'M'} ${X(x)} ${Y(y)}`).join(' ')+' Z';
+    svg+=`<defs><clipPath id="hole-clip"><path d="${border}"/><path d="${core}"/></clipPath></defs>`;
+    for (const outline of s.holeOutlines) svg+=poly(outline.map(([x,y])=>[X(x),Y(y)]),"",'fill="white" stroke="#9d5429" stroke-width="1.5" clip-path="url(#hole-clip)"');
+  }
   if ($("routes").checked)
     s.cables.forEach(([x, y], i) => {
       svg +=
-        `<circle cx="${X(x)}" cy="${Y(y)}" r="${s.hole ? Math.max(1, (s.hole * k) / 2000) : 3}" fill="white" stroke="#148aac" stroke-width="1.5"/>` +
+        `<circle cx="${X(x)}" cy="${Y(y)}" r="2" fill="#148aac" stroke="#148aac" stroke-width="1.5"/>` +
         txt(X(x) + 7, Y(y) - 6, `c${i}`);
     });
   if ($("dimensions").checked) {
@@ -592,7 +604,7 @@ function drawSection() {
         ? `Tedge / Tcentre = ${fmt(params.hex_edge_ratio ?? 0.75)}`
         : `Y span = ${fmt(mm(high - low))} mm`,
     );
-    if (s.hole) svg += txt(19, 350, `Cable Ø ${fmt(s.hole)} mm`, "dim-text");
+    if (s.hole) svg += txt(19, 350, `Straight bore Ø ${fmt(s.hole)} mm`, "dim-text");
     if (s.notchR)
       svg += txt(
         419,
@@ -615,7 +627,7 @@ function drawSection() {
   $("section-location").textContent =
     `${u.name} · ${$("station").value}% along link · Z = ${fmt(mm(s.z - geom.origin))} mm`;
   $("section-note").textContent =
-    `Cable inward shift: ${fmt(mm(params.tendon_inward_shift))} mm. ${s.hole ? "Sampled XY wall clearance around hole" : "Sampled XY cable-centre clearance"}: ${fmt(mm(gap), 3)} mm${gap < 0 ? " — route/channel lies outside this section" : ""}. This is not a full 3D clearance check.`;
+    `Cable inward shift: ${fmt(mm(params.tendon_inward_shift))} mm. ${s.hole ? "Sampled XY wall clearance around hole" : "Sampled XY cable-centre clearance"}: ${fmt(mm(gap), 3)} mm${gap < 0 ? " — route/channel lies outside this section" : ""}. Brown openings/axes are straight fabrication bores; blue points/lines are simulation routing sites. This is not a full 3D clearance check.`;
 }
 function drawPolar() {
   const g = geom,
@@ -778,6 +790,13 @@ function make3D() {
       faces.push({pts:[...rings[0]].reverse(),core:true},{pts:rings[1],core:true});
     }
   }
+  if ($("holes").checked && params.build?.cable_hole_diameter_mm > 0) {
+    const axes=boreAxes(g).map(a=>({base:[a.base[0],a.base[1],a.base[2]-g.origin-g.length/2],
+                                   tip:[a.tip[0],a.tip[1],a.tip[2]-g.origin-g.length/2]}));
+    for(const face of faces)face.bores=axes.map(a=>boreEllipse(a,params.build.cable_hole_diameter_mm/2000,face.pts)).filter(ring=>ring.length && [0,1,2].every(j=>
+      Math.min(...ring.map(p=>p[j]))<=Math.max(...face.pts.map(p=>p[j]))+1e-10 &&
+      Math.max(...ring.map(p=>p[j]))>=Math.min(...face.pts.map(p=>p[j]))-1e-10));
+  }
   if ($("routes").checked)
     for (let c = 0; c < params.n_cables; c++)
       lines3.push(
@@ -853,8 +872,22 @@ function draw3D() {
     c.fillStyle = f.core ? "#d79b3f" : selected
       ? `rgb(${Math.round(45 + 55 * shade)},${Math.round(128 + 75 * shade)},${Math.round(134 + 72 * shade)})`
       : `rgb(${Math.round(60 + 100 * shade)},${Math.round(101 + 105 * shade)},${Math.round(126 + 97 * shade)})`;
-    c.fill();
-    if (params.n_cables === 2) {
+    if (f.bores?.length) {
+      c.save(); c.clip();
+      for(const ring of f.bores){
+        c.beginPath();c.rect(0,0,w,h);
+        ring.map(transform).forEach((p,i)=>{const x=w/2+p[0]*scale,y=h/2-p[1]*scale;if(i)c.lineTo(x,y);else c.moveTo(x,y);});
+        c.closePath();c.clip("evenodd");
+      }
+      c.fillRect(0,0,w,h);c.restore();
+      // Visible rims distinguish actual openings from route markers.
+      c.save();c.beginPath();
+      f.p.forEach((p,i)=>{const x=w/2+p[0]*scale,y=h/2-p[1]*scale;if(i)c.lineTo(x,y);else c.moveTo(x,y);});
+      c.closePath();c.clip();c.strokeStyle="#9d5429";c.lineWidth=1.2;
+      for(const ring of f.bores){c.beginPath();ring.map(transform).forEach((p,i)=>{const x=w/2+p[0]*scale,y=h/2-p[1]*scale;if(i)c.lineTo(x,y);else c.moveTo(x,y);});c.closePath();c.stroke();}
+      c.restore();
+    } else c.fill();
+    if (params.n_cables === 2 && !f.bores?.length) {
       c.lineWidth = 0.3;
       c.strokeStyle = "#27587150";
       c.stroke();
@@ -880,6 +913,7 @@ function draw3D() {
     ["Base", -geom.length / 2],
     ["Tip", geom.length / 2],
   ]) {
+    if (Math.abs(Math.cos(camera.pitch)) < .05) continue;
     const p = transform([0, 0, z]);
     c.textAlign = "center";
     c.fillText(
@@ -1042,12 +1076,13 @@ for (const id of [
   "dimensions",
   "routes",
   "core",
+  "holes",
   "link",
   "station",
   "construction",
   "include-base",
 ])
-  $(id).oninput = () => render(id === "routes" || id === "core");
+  $(id).oninput = () => render(id === "routes" || id === "core" || id === "holes");
 let drag = null;
 $("three").onpointerdown = (e) => {
   drag = { x: e.clientX, y: e.clientY, yaw: camera.yaw, pitch: camera.pitch };
@@ -1083,7 +1118,7 @@ document.querySelectorAll("[data-camera]").forEach(
   (b) =>
     (b.onclick = () => {
       if (b.dataset.camera === "end")
-        camera = { yaw: 0, pitch: pi / 2, zoom: 1 };
+        camera = { yaw: -pi / 2, pitch: pi / 2, zoom: 1 };
       else if (b.dataset.camera === "front")
         camera = { yaw: 0, pitch: 0, zoom: 1 };
       else camera = { yaw: 0.6, pitch: 0.6, zoom: 1 };

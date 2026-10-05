@@ -44,7 +44,7 @@ Every build compiles its XML before publishing outputs. Failed stages preserve t
 | `section_dimensions.json` | Two-cable base/tip thickness and per-link taper dimensions. |
 | `elastic_core_dimensions.json` | Core percentage, reference-width law and core dimensions at every joint and the tip. |
 | `cad/spirob.step`, `cad/spirob.stl` | Whole-robot manufacturing exports in **millimetres**, when CAD is enabled. |
-| `cad/spirob.iges` | Optional **surface** interchange in mm; STEP is preferred for solids. |
+| `cad/spirob.iges` | Optional **trimmed BRep** interchange in mm; STEP is preferred for solids. |
 | `cad/spirob_cad_report.json` | CAD validity, volumes, bounds, hashes and round-trip results. |
 | `spirob_aligned.mjb` | Optional compiled frame-alignment experiment tied to MuJoCo 3.3.5. |
 
@@ -141,7 +141,7 @@ These keys belong inside a `"build": {...}` object. The two example build entrie
 | `elastic_core_percent` | `5` (%) | Core **X width for 2 cables**, **diameter for n≥3**, as a percentage of the local continuous reference width. Strictly between 0 and 100; `5` means 5%. Narrows continuously from base to tip. |
 | `cable_hole_diameter_mm` | `0` mm | Fabrication channel diameter; 0 leaves CAD undrilled. Positive diameters require fabrication profile. Does not change tendon display width or simulation mass. |
 | `fuse_cad` | `false` | Fuse simulation-profile solids where possible. Fabrication is already fused. Requires CAD. |
-| `iges` | `false` | Also export IGES surfaces, in mm. Requires CAD; STEP remains the solid exchange format. |
+| `iges` | `false` | Also export trimmed IGES BRep, in mm. Requires CAD; STEP remains the preferred solid exchange format. |
 
 ![Core and cable-hole dimensions for two- and three-cable SpiRobs](docs/figures/fabrication-parameters.png)
 
@@ -455,3 +455,34 @@ Joint gains remain independently configured. Constant Y thickness breaks the
 all-dimensions-similar assumption behind cubic stiffness scaling; calibrate the
 gains for the manufactured design rather than treating the existing exponential
 law as a consequence of this geometry. Deploy the updated website after merging.
+
+
+## Cable bores and the partial base link
+
+Fabrication holes now use **one straight cylindrical cut per cable**, connecting
+that cable's first and last simulation routing anchors and extending to the base
+and tip planes. The old round-transition sweep followed every simulation routing
+segment and could introduce curved transition patches near the partial base.
+The cutter now extends only a small diameter-dependent clearance beyond the ends.
+
+The simulation's existing routing sites and dynamics are retained. They can
+therefore differ from the straight manufacturing axis, especially at a partial
+base. The CAD report records the maximum route deviation and both bore endpoints;
+this difference matters when comparing hardware to an existing calibrated model.
+Regenerate the CAD to apply the change; old downloads are unchanged.
+
+With a positive **Cable hole diameter**, the website's **Cable holes** checkbox
+shows bore openings in the cross-section and 3D preview and brown dashed straight
+axes on the side profiles. Blue **Simulation routes** remain independently
+switchable. Select **End** to see the openings. The 3D preview omits interior bore
+wall shading; the STEP/STL/IGES files contain the full cylindrical walls.
+
+Checks now include full-length bore-probe intersection on STEP, centre/ring ray
+checks on STL, a single connected STL component and tighter tessellation around
+small bores. IGES uses trimmed BRep export, with all six bounding coordinates and
+face count checked after reimport. CAD topology checks do not certify print
+settings, support generation or hole fit after printing.
+
+![Website cross-section showing the straight fabrication bores](docs/figures/cable-bore-preview.png)
+
+See [the bore update notes](docs/engineering/CABLE_BORE_UPDATE.md) for the route definition, export checks and findings from the supplied CAD files.

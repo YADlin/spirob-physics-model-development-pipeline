@@ -52,7 +52,7 @@ export async function designReport(params,g,schema) {
     'Spiral: r_inner(theta) = a exp(b theta); r_outer(theta) = a E exp(b theta); E = exp(2 pi b). Theta runs from tip (0) to base (q).',
     'Elastic core: c(z) = (p/100) Wref(z). Width/diameter is linear in axial distance and geometric at complete-link stations. Two-cable Y thickness follows the selected thickness profile.',
     'Joint law: K_i = K0 / beta_j^(3(i-1)), D_i = D0 / beta_j^(3(i-1)); base overrides apply. These are modelling assumptions, not material calibration.',
-    'The 3D figure is a sampled preview. Fabrication holes/core and simulation mass/contact geometry are distinct. CAD export units are mm; simulation geometry uses metres.',
+    'The 3D figure is a sampled preview with bore openings; interior bore walls are omitted. Manufacturing bores are straight; blue simulation routing sites are separate. Fabrication holes/core and simulation mass/contact geometry are distinct. CAD export units are mm; simulation geometry uses metres.',
     ...captions];
   let md='# SpiRob design report\n\n'+notes.join('\n\n')+`\n\nParameters SHA-256 (params.json bytes): \`${hash}\`\n\n## Derived dimensions and constants\n\n| Quantity | Value |\n|---|---|\n`+metrics.map(([k,v])=>`| ${k} | ${v} |`).join('\n');
   let body='<h1>SpiRob design report</h1>'+notes.map(n=>`<p>${escape(n)}</p>`).join('')+`<p>Parameters SHA-256: <code>${hash}</code></p><h2>Derived dimensions and constants</h2><table>`+metrics.map(([k,v])=>`<tr><th>${escape(k)}</th><td>${escape(v)}</td></tr>`).join('')+'</table>';

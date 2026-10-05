@@ -68,7 +68,7 @@ def main(argv=None):
     for name, help_text in [('safe','Capsule preset with conservative solver settings; explicit collision-mode wins'), ('fast','Faster, softer preset for exploratory runs'), ('high','Higher solver accuracy preset; does not guarantee stability')]:
         physics.add_argument('--'+name, action='store_true', help=help_text)
     p.add_argument('--cad',action=argparse.BooleanOptionalAction, default=None, help='Export whole-robot STEP and millimetre STL with a CAD validation report')
-    p.add_argument('--iges',action=argparse.BooleanOptionalAction, default=None, help='Also export an IGES surface model; requires --cad or build.cad=true')
+    p.add_argument('--iges',action=argparse.BooleanOptionalAction, default=None, help='Also export a trimmed IGES BRep model; requires --cad or build.cad=true')
     p.add_argument('--fuse-cad',action=argparse.BooleanOptionalAction, default=None, help='Fuse simulation CAD solids; fabrication is already fused; requires CAD')
     p.add_argument('--cad-profile',choices=['fabrication','simulation'],default=None, help='fabrication adds a central ligament and optional channels; simulation assembles link CAD')
     p.add_argument('--flat-thickness-m',type=float, help='Legacy stepped fabrication lens: full constant thickness in metres')

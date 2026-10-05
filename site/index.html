@@ -64,7 +64,8 @@
           <label
             ><input id="dimensions" type="checkbox" checked /> Dimensions</label
           ><label
-            ><input id="routes" type="checkbox" checked /> Cable routes</label
+            ><input id="routes" type="checkbox" checked /> Simulation routes</label
+          ><label><input id="holes" type="checkbox" checked /> Cable holes</label
           ><label><input id="core" type="checkbox" checked /> Fabrication core</label
           ><label
             >Inspect link
@@ -160,8 +161,7 @@
               aria-label="Rotatable sampled SpiRob surface"
             ></canvas>
             <div class="card-note">
-              Sampled outer surface and tapered core. Drilled channels and the final fused solid are
-              verified in the generated CAD, not this preview.
+              Sampled surface with straight bore openings (set cable-hole diameter above zero). Interior bore walls are omitted in this preview. Blue lines show the separate simulation route; use End view to inspect openings. The generated CAD verifies the full bores.
             </div>
           </section>
         </div>
