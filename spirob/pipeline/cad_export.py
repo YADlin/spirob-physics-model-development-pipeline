@@ -161,20 +161,17 @@ def build_cad(units, geometry, params, *, profile='fabrication', plain=False,
     else:
         combined = cq.Compound.makeCompound(shapes)
     before_volume = combined.Volume()
-    if hole:
-        for path in geometry.tendon_paths:
-            pts = [cq.Vector(*(round(v*1000, 9) for v in p.routed_m)) for p in path.points]
-            d0 = (pts[1]-pts[0]).normalized()
-            d1 = (pts[-1]-pts[-2]).normalized()
-            extension = z1-z0
-            pts = [pts[0]-d0*extension] + pts + [pts[-1]+d1*extension]
-            wire = cq.Wire.makePolygon(pts, close=False)
-            tool = cq.Workplane(cq.Plane(origin=pts[0], normal=d0)).circle(hole/2).sweep(
-                wire, isFrenet=True, transition='round').val()
-            if not tool.isValid(): raise ValueError(f'Cable {path.cable_index}: invalid hole tool')
-            combined = combined.cut(tool).clean()
-        if before_volume-combined.Volume() <= 1e-6:
-            raise ValueError('Cable paths removed no material; inspect routing')
+    from spirob.fabrication_routes import cable_hole_axes, cylinder_for_axis
+    axes = cable_hole_axes(geometry) if hole else []
+    for axis in axes:
+        # One straight cylinder: no rounded sweep joints, self-intersections,
+        # spherical/toric transition patches, or long remote extensions.
+        tool = cylinder_for_axis(axis, hole)
+        combined = combined.cut(tool).clean()
+        if not combined.intersect(tool).Volume() <= 1e-6:
+            raise ValueError(f"Cable {axis['cable_index']}: material obstructs the bore")
+    if hole and before_volume-combined.Volume() <= 1e-6:
+        raise ValueError('Cable paths removed no material; inspect routing')
     if not combined.isValid() or combined.Volume() <= 0:
         raise ValueError('CAD boolean operations produced invalid geometry')
     solid_count = len(combined.Solids())
@@ -188,6 +185,8 @@ def build_cad(units, geometry, params, *, profile='fabrication', plain=False,
                       'thickness_scales_with_link': (profile == 'simulation' or scaled_flat) if n == 2 and not plain else None, 'solid_count': solid_count, 'valid': True, 'unique_link_solids_built': len(templates) if templates else len(units),
                       'elastic_core': core_report if profile == 'fabrication' else None,
                       'cable_hole_diameter_mm': hole,
+                      'cable_hole_route': 'straight between first and last simulation anchors, extended to end planes',
+                      'cable_hole_axes_csv_frame': axes,
                       'flat_centre_thickness_mm': thickness if n == 2 and profile == 'fabrication' else None,
                       'flat_edge_ratio': (params['hex_edge_ratio'] if hex_section else 1. if scaled_flat else edge) if n == 2 and profile == 'fabrication' else None,
                       'removed_hole_volume_mm3': before_volume-combined.Volume()}
@@ -219,7 +218,9 @@ def process_cad(csv_file, params, *, outdir='cad', prefix='spirob', fuse=False,
     dest = Path(outdir); dest.mkdir(parents=True, exist_ok=True)
     step, stl, manifest = (dest/f'{prefix}{ext}' for ext in ('.step', '.stl', '_cad_report.json'))
     cq.exporters.export(shape, str(step))  # mm geometry and STEP's mm declaration agree
-    shape.exportStl(str(stl), tolerance=stl_tolerance*1000, relative=False)
+    # Resolve small bores accurately enough that STL facets do not close them.
+    mesh_tolerance_mm = min(stl_tolerance*1000, cable_hole_diameter_mm*.005) if cable_hole_diameter_mm else stl_tolerance*1000
+    shape.exportStl(str(stl), tolerance=mesh_tolerance_mm, relative=False)
     import trimesh
     mesh = trimesh.load(str(stl), force='mesh')
     # Remove duplicate/zero-area tessellation faces and weld numerically identical
@@ -234,6 +235,24 @@ def process_cad(csv_file, params, *, outdir='cad', prefix='spirob', fuse=False,
     check_mesh = trimesh.load(str(stl), force='mesh')
     if profile == 'fabrication' and not check_mesh.is_volume:
         raise ValueError('Fabrication STL round-trip validation failed')
+    if profile == 'fabrication' and len(check_mesh.split(only_watertight=False)) != 1:
+        raise ValueError('Fabrication STL contains detached components')
+    if cable_hole_diameter_mm:
+        import numpy as np
+        from spirob.fabrication_routes import cable_hole_axes
+        for axis in cable_hole_axes(geometry):
+            a=np.array(axis['base_m'])*1000; b=np.array(axis['tip_m'])*1000
+            a[2]-=geometry.units[0].local_frame_origin_m[2]*1000
+            b[2]-=geometry.units[0].local_frame_origin_m[2]*1000
+            d=(b-a)/np.linalg.norm(b-a)
+            u=np.cross(d,[0,1,0]);u/=np.linalg.norm(u);v=np.cross(d,u)
+            origins=[a-d*cable_hole_diameter_mm*2]
+            for r in (.25,.475):
+                origins.extend(a-d*cable_hole_diameter_mm*2+cable_hole_diameter_mm*r*(u*np.cos(t)+v*np.sin(t)) for t in np.linspace(0,2*np.pi,16,endpoint=False))
+            hits,_,_=check_mesh.ray.intersects_location(np.array(origins),np.tile(d,(len(origins),1)))
+            if len(hits): raise ValueError('STL contains material obstructing a sampled cable-bore probe')
+        report['stl_bore_check']={'method':'33 axial rays per bore through centre and rings up to 95% diameter','passed':True}
+    report['stl_tolerance_mm']=mesh_tolerance_mm
     report.update({'stl_watertight':bool(check_mesh.is_watertight),
                    'stl_oriented_volume':bool(check_mesh.is_volume),
                    'stl_vertex_merge_decimal_places_mm':7})
@@ -251,11 +270,23 @@ def process_cad(csv_file, params, *, outdir='cad', prefix='spirob', fuse=False,
                    'notes':['Fabrication flexure and lens dimensions require mechanical calibration.',
                             'Cable holes are optional; zero diameter leaves undrilled geometry.',
                             'Single valid solid is a topology check, not a print/process qualification.']})
+    if cable_hole_diameter_mm:
+        from spirob.fabrication_routes import cable_hole_axes, cylinder_for_axis
+        residuals=[]
+        for axis in cable_hole_axes(geometry):
+            probe=cylinder_for_axis(axis, cable_hole_diameter_mm*.999,
+                                    geometry.units[0].local_frame_origin_m[2])
+            residual=restored.intersect(probe).Volume()
+            if residual > 1e-6:
+                raise ValueError('STEP round-trip has material inside a cable bore')
+            residuals.append(residual)
+        report['bore_check']={'method':'full-length 99.9%-diameter cylinder intersection',
+                              'residual_volumes_mm3':residuals,'tolerance_mm3':1e-6}
     iges_path = None
     if iges:
         from OCP.IGESControl import IGESControl_Writer, IGESControl_Reader
         from OCP.IFSelect import IFSelect_RetDone
-        writer = IGESControl_Writer('MM', 0)
+        writer = IGESControl_Writer('MM', 1)  # BRep mode preserves trimmed face topology.
         iges_path = dest / f'{prefix}.iges'
         if not writer.AddShape(shape.wrapped) or not writer.Write(str(iges_path)):
             raise ValueError('IGES export failed')
@@ -264,9 +295,21 @@ def process_cad(csv_file, params, *, outdir='cad', prefix='spirob', fuse=False,
             raise ValueError('IGES round-trip import failed')
         restored_iges = cq.Shape.cast(reader.OneShape())
         ib = restored_iges.BoundingBox()
-        if max(abs(x-y) for x,y in zip((ib.xlen,ib.ylen,ib.zlen),(bb.xlen,bb.ylen,bb.zlen))) > .01:
+        if max(abs(x-y) for x,y in zip((ib.xmin,ib.ymin,ib.zmin,ib.xmax,ib.ymax,ib.zmax),(bb.xmin,bb.ymin,bb.zmin,bb.xmax,bb.ymax,bb.zmax))) > .01:
             raise ValueError('IGES round-trip dimensions differ by more than 0.01 mm')
-        report['iges'] = {'units':'mm', 'representation':'surfaces', 'round_trip_bounds_tolerance_mm':.01}
+        if len(restored_iges.Faces()) != len(shape.Faces()):
+            raise ValueError('IGES round-trip changed the trimmed face count')
+        if len(restored_iges.Solids()) != len(shape.Solids()):
+            raise ValueError('IGES round-trip changed the solid count')
+        if cable_hole_diameter_mm:
+            for axis in cable_hole_axes(geometry):
+                probe=cylinder_for_axis(axis,cable_hole_diameter_mm*.999,
+                                        geometry.units[0].local_frame_origin_m[2])
+                if restored_iges.intersect(probe).Volume() > 1e-6:
+                    raise ValueError('IGES round-trip has material inside a cable bore')
+        report['iges'] = {'units':'mm', 'representation':'trimmed BRep', 'round_trip_bounds_tolerance_mm':.01,
+                          'round_trip_solid_count':len(restored_iges.Solids()),'round_trip_face_count':len(restored_iges.Faces()),
+                          'bore_probe_passed':True if cable_hole_diameter_mm else None}
         report['files'][iges_path.name] = hashlib.sha256(iges_path.read_bytes()).hexdigest()
     manifest.write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
     print(f'CAD: {step}, {stl}; {len(units)} elements, {report["solid_count"]} solid(s), millimetres')
@@ -281,7 +324,7 @@ def main():
     p.add_argument('--profile',choices=['fabrication','simulation'],default='fabrication', help='fabrication adds flexures/channels; simulation assembles rigid link surfaces')
     p.add_argument('--fuse',action='store_true', help='Fuse the simulation assembly when possible')
     p.add_argument('--plain',action='store_true', help='Use a circular revolved section')
-    p.add_argument('--iges',action='store_true', help='Also export IGES surfaces in mm and validate round-trip dimensions')
+    p.add_argument('--iges',action='store_true', help='Also export trimmed IGES BRep in mm and validate round-trip dimensions')
     p.add_argument('--flat-thickness-m',type=float, help='Legacy fabrication lens thickness in metres; current sections use base-thickness-mm'); p.add_argument('--flat-edge-ratio',type=float, help='Legacy fabrication lens edge / centre thickness in (0,1]')
     p.add_argument('--neck-width-mm',type=float, help='Legacy base core width/diameter in mm; converted to a tapered width percentage')
     p.add_argument('--elastic-core-percent',type=float, help='Core X width (2 cables) or diameter (n cables) as percent of local reference width; default 5')

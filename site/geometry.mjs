@@ -1,3 +1,4 @@
+import {boreAxes, boreEllipse} from "./holes.mjs";
 // Browser geometry in SI. Equations and discrete profiles are tested against
 // spirob.geometry; CAD-only surface previews are sampled, not export meshes.
 const pi = Math.PI;
@@ -275,6 +276,7 @@ export function section(p, g, u, fraction = 0.5, samples = 128) {
     T,
     points: [],
     cables: [],
+    holeOutlines: [],
     notches: [],
     polygon: [],
     neck: coreWidthAt(p, g, z)*1000,
@@ -287,6 +289,10 @@ export function section(p, g, u, fraction = 0.5, samples = 128) {
       a[0] + clamp(t, 0, 1) * (b[0] - a[0]),
       a[1] + clamp(t, 0, 1) * (b[1] - a[1]),
     ]);
+  }
+  if (result.hole > 0) {
+    result.holeOutlines = boreAxes(g).map(axis=>boreEllipse(axis,result.hole/2000,
+      [[0,0,z],[1,0,z],[0,1,z]]).map(v=>v.slice(0,2)));
   }
   if (n === 2 && !p.build?.plain) {
     const e = p.flat_section === "hex" ? (p.hex_edge_ratio ?? 0.75) : 1,
@@ -400,6 +406,10 @@ export function clearance(s) {
     }
     return odd;
   }
+  if (s.holeOutlines?.length) return s.holeOutlines.map(outline=>Math.min(...outline.map(p=>{
+    const d=Math.min(...s.points.map((a,i)=>distance(p,a,s.points[(i+1)%s.points.length])));
+    return inside(p)?d:-d;
+  })));
   return s.cables.map((p) => {
     const d = Math.min(
       ...s.points.map((a, i) =>

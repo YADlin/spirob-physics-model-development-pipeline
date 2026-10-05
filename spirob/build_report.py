@@ -138,6 +138,7 @@ def write_build_report(stage, params, geometry, model):
            'r_inner(θ) = a exp(bθ); r_outer(θ) = a E exp(bθ); E = exp(2πb). θ increases from tip to base.',
            'Core c(z) = (p/100) Wref(z): linear with axial distance, geometric at complete-link stations. Two-cable Y follows the selected thickness law.',
            'K_i = K0 / beta_j^(3(i−1)); D_i = D0 / beta_j^(3(i−1)); protected base overrides apply. These are assumptions, not material calibration.',
+           'Manufacturing bores are straight between first/last simulation anchors; MJCF routing sites are unchanged. Bore axes and clearance checks are recorded in cad/spirob_cad_report.json.',
            'Drawings use compiled simulation meshes; core dimensions are reference overlays. Fabrication channels/core are not simulation mass/contact geometry. CAD is in mm; simulation geometry is in metres.',
            'The report records the files at build time. Later edits with joint/sensor tools do not update this record; regenerate the build for a new record.']
     if params.get('thickness_profile') == 'constant':

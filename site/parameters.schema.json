@@ -347,7 +347,7 @@
         },
         "iges": {
           "title": "Also export IGES",
-          "description": "Optional IGES surface export using OpenCascade. Requires CAD export; STEP is the preferred solid interchange.",
+          "description": "Optional trimmed IGES BRep export using OpenCascade. Requires CAD export; STEP is the preferred solid interchange.",
           "default": false,
           "type": "boolean",
           "x-unit": "",
@@ -389,7 +389,7 @@
         },
         "cable_hole_diameter_mm": {
           "title": "Cable channel diameter",
-          "description": "Diameter of channels swept along the routing path. Zero leaves the CAD undrilled. Does not change simulation tendon radius or mass.",
+          "description": "Diameter of straight fabrication bores in mm; zero leaves the CAD undrilled. Bores connect first/last simulation routing anchors and extend to the end planes. The Cable holes overlay shows their openings; blue simulation routes remain separate.",
           "default": 0,
           "type": "number",
           "x-unit": "mm",
