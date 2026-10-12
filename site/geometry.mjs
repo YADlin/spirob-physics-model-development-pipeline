@@ -1,3 +1,4 @@
+import {resolveGains} from "./gains.mjs";
 import {boreAxes, boreEllipse} from "./holes.mjs";
 // Browser geometry in SI. Equations and discrete profiles are tested against
 // spirob.geometry; CAD-only surface previews are sampled, not export meshes.
@@ -181,26 +182,10 @@ export function derive(p) {
       partial: i === 0 && partial,
     };
   });
-  const preset = { safe: [0.2, 0.2], fast: [0.01, 0.001], high: [0.1, 0.02] }[
-    p.build?.physics_preset
-  ] ?? [0.2, 0.01];
-  const gainBeta = p.post_gen?.joint_beta ?? 1.03,
-    K = p.post_gen?.joint_stiffness_base ?? preset[0],
-    D = p.post_gen?.joint_damping_base ?? preset[1];
-  const gains = units.map((u, i) => ({
-    joint: `j_${String(i + 1).padStart(3, "0")}`,
-    k:
-      i === 0
-        ? (p.post_gen?.first_joint_stiffness ?? K)
-        : K / gainBeta ** (3 * i),
-    d:
-      i === 0
-        ? (p.post_gen?.first_joint_damping ?? D)
-        : D / gainBeta ** (3 * i),
-  }));
-  if (gains.some((v) => !Number.isFinite(v.k) || !Number.isFinite(v.d)))
-    throw Error("Joint gain law overflows. Choose a gain decay closer to 1.");
+  const gainLaw = resolveGains(p, units.length);
+  const gains = gainLaw.gains;
   return {
+    gainLaw,
     a,
     b,
     E,

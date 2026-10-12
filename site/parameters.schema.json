@@ -206,7 +206,7 @@
         },
         "joint_stiffness_base": {
           "title": "Spring coefficient K\u2080",
-          "description": "Uncalibrated base coefficient. K\u1d62 = K\u2080 / \u03b2\u2c7c^[3(i\u22121)], before the protected base override.",
+          "description": "Legacy K0: converted k2 = K0 / joint_beta^3 when k2 is omitted. Also the mount fallback; retained for backward compatibility.",
           "default": 0.2,
           "type": "number",
           "x-unit": "N\u00b7m/rad",
@@ -215,7 +215,7 @@
         },
         "joint_damping_base": {
           "title": "Damping coefficient D\u2080",
-          "description": "Uncalibrated damping coefficient, with the same exponent as stiffness.",
+          "description": "Legacy D0: converted d2 = D0 / joint_beta^3 when d2 is omitted. Also the mount fallback; independent of fitted stiffness.",
           "default": 0.01,
           "type": "number",
           "x-unit": "N\u00b7m\u00b7s/rad",
@@ -224,7 +224,7 @@
         },
         "joint_beta": {
           "title": "Gain decay \u03b2\u2c7c",
-          "description": "User-chosen gain decay, independent of geometric \u03b2g = exp(b\u0394\u03b8). Above 1 decreases gains toward the tip; 1 gives constant gains.",
+          "description": "Legacy shared decay beta. Used only for omitted canonical ratios and legacy anchor conversions; independent of geometric taper. Explicit rho_k/rho_d override their own decay channels.",
           "default": 1.03,
           "type": "number",
           "x-unit": "",
@@ -278,6 +278,38 @@
         "_comment": {
           "type": "string",
           "x-hidden": true
+        },
+        "k2": {
+          "title": "Stiffness at j_002 (k\u2082)",
+          "description": "Actual stiffness at fixed reference j_002. Overrides legacy converted K0 only for flexible joints; mounting and damping stay independent.",
+          "type": "number",
+          "x-unit": "N\u00b7m/rad",
+          "x-group": "dynamics",
+          "minimum": 0
+        },
+        "rho_k": {
+          "title": "Adjacent stiffness ratio \u03c1k",
+          "description": "k(i+1)/k(i). Equivalent beta_j = rho_k^(-1/3). Fitted decay is independent of geometric taper. Omitted uses joint_beta^(-3).",
+          "type": "number",
+          "x-unit": "",
+          "x-group": "dynamics",
+          "exclusiveMinimum": 0
+        },
+        "d2": {
+          "title": "Damping at j_002 (d\u2082)",
+          "description": "Independent damping amplitude. A static stiffness fit does not identify damping. Omitted retains legacy D0 conversion.",
+          "type": "number",
+          "x-unit": "N\u00b7m\u00b7s/rad",
+          "x-group": "dynamics",
+          "minimum": 0
+        },
+        "rho_d": {
+          "title": "Adjacent damping ratio \u03c1d",
+          "description": "Independent damping decay; never inferred from rho_k. Omitted retains legacy joint_beta^(-3).",
+          "type": "number",
+          "x-unit": "",
+          "x-group": "dynamics",
+          "exclusiveMinimum": 0
         }
       },
       "additionalProperties": false

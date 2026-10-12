@@ -112,6 +112,10 @@ These keys belong inside a `"post_gen": {...}` object. They are optional; exampl
 | --- | --- | --- |
 | `robot_pos` | `[0,0,0.22628]` m | Root body world position. If omitted, use the generated root position. |
 | `robot_quat` | `[0,0,-1,0]` | Root orientation `[w,x,y,z]`, nonzero. The example points local +Z down. If omitted, use the generated orientation. |
+| `k2` | Omitted → K₀ / joint_beta³ | Actual flexible stiffness at fixed j_002, N·m/rad. |
+| `rho_k` | Omitted → joint_beta⁻³ | Adjacent stiffness ratio; equivalent βⱼ = rho_k⁻¹ᐟ³. |
+| `d2` | Omitted → D₀ / joint_beta³ | Independently fitted damping at j_002, N·m·s/rad. |
+| `rho_d` | Omitted → joint_beta⁻³ | Independent adjacent damping ratio. |
 | `joint_stiffness_base` | `0.2` N·m/rad | K₀ coefficient of the gain law below. Omitted uses the chosen preset. |
 | `joint_damping_base` | `0.01` N·m·s/rad | D₀ coefficient; omitted uses the preset. |
 | `joint_beta` | `1.03` | Positive gain-decay βⱼ, independent of geometric βg. Above 1 gives decreasing gains; 1 gives constant gains. |
@@ -211,11 +215,28 @@ For n-lobe links, the cutter has polygon circumradius $R_p=R[1+t(\sec(\pi/n)-1)]
 
 ![Stiffness and damping curves for several decay assumptions](docs/figures/joint-gain-law.png)
 
-For base-to-tip joint number $i=1,\ldots,N$:
+The common experimental convention uses the **actual stiffness at j_002**, with a fixed reference that exclusions never move:
 
-$$K_i=K_0/\beta_j^{3(i-1)},\qquad D_i=D_0/\beta_j^{3(i-1)}.$$
+$$k_i=k_2\rho_k^{i-2},\quad d_i=d_2\rho_d^{i-2},\qquad i\ge2.$$
 
-This is an **assumed exponential law in joint index** with the same exponent for damping and stiffness. It is retained and tested in this update. It is not fitted automatically to the printed material or inferred from CAD. βⱼ is independent of geometric βg. There is no linear joint-gain mode; the linear option described earlier refers to **link thickness**. The example's j_001 overrides are applied after this law. For ball joints, damping applies to their three rotational degrees of freedom.
+`post_gen.k2` is in N·m/rad and `rho_k` is the adjacent-joint stiffness ratio. Damping has independent `d2` (N·m·s/rad) and `rho_d`. A static stiffness fit does **not** identify damping. Ratios below 1 give exponential decay in joint index; 1 gives constant gains. These ratios are independent of geometric taper.
+
+Legacy inputs retain their defaults and original calculation when canonical fields are absent:
+
+$$k_i=K_0/\beta_j^{3(i-1)},\quad
+\rho_k=\beta_j^{-3},\quad k_2=K_0\beta_j^{-3},\quad
+\beta_j=\rho_k^{-1/3}.$$
+
+The SpiRob Lab form has $\rho_k=r^b$. Legacy damping converts separately as $d_2=D_0\beta_j^{-3}$, $\rho_d=\beta_j^{-3}$. Explicit canonical fields override **only their own channel**. If only a ratio is entered, the corresponding amplitude remains the legacy-converted joint-2 value; changing `rho_k` does not change damping. Retain legacy fields when migrating: they also provide the mounting fallback. `first_joint_stiffness` and `first_joint_damping` remain independent j_001 settings; if omitted, legacy K0/D0 or preset values still define the mount, never k2/d2.
+
+**Worked example:** K0 = 0.2 and beta_j = 1.03 give rho_k = **0.9151416594**, k2 = **0.1830283319 N·m/rad**. Use full precision when comparing models. Adding these equivalent canonical values preserves every flexible-joint stiffness:
+
+```python
+p["post_gen"]["rho_k"] = 1.03 ** -3
+p["post_gen"]["k2"] = 0.2 * p["post_gen"]["rho_k"]
+```
+
+The website Dynamics button **Convert current gains to j_002 values** explicitly fills all four canonical values without changing the gains. Clearing an optional field restores its legacy fallback. The controls accept all four canonical fields and display the effective conversion, reference and independent damping law. Blank canonical fields retain legacy values; exported reports include effective values and per-joint gains. Ball-joint damping applies to all three rotational DOFs.
 
 ### Why a linear core taper can coexist with exponential joint gains
 
@@ -228,9 +249,9 @@ Complete links occupy equal increments of spiral angle, **not equal axial distan
 | Core width/diameter versus straight axial position $z$ | **Linear**, to a virtual apex beyond the actual tip. |
 | Core width/diameter at corresponding complete-link stations | **Geometric / exponential**: one factor $1/\beta_g$ per link. |
 | Nominal similar core cross-sectional area versus $z$ | **Quadratic** when both transverse dimensions scale; legacy fixed-Y variants differ. Hex CAD ridge clipping can introduce small departures from perfect section similarity. |
-| Implemented stiffness and damping versus joint index | **Exponential**: one factor $1/\beta_j^3$ per joint, except explicit base overrides. |
+| Implemented stiffness and damping versus joint index | **Exponential**: independent factors $\rho_k$ and $\rho_d$ per joint, except mounting overrides. Legacy defaults share $1/\beta_j^3$. |
 
-For geometrically similar elastic sections of the same material, rotational bending stiffness scales approximately as $K\sim EI/\ell$. When all dimensions scale by $s$, $I\sim s^4$ and $\ell\sim s$, hence $K\sim s^3$. A linear Kelvin–Voigt bending model with a constant material viscosity gives the same cubic scale for damping; real TPU damping must be measured. This is the physical motivation for the exponent **3**, not proof that the current coefficients reproduce the printed robot.
+For geometrically similar elastic sections of the same material, rotational bending stiffness scales approximately as $K\sim EI/\ell$. When all dimensions scale by $s$, $I\sim s^4$ and $\ell\sim s$, hence $K\sim s^3$. A linear Kelvin–Voigt bending model with a constant material viscosity gives the same cubic scale for damping; real TPU damping must be measured. Constant-thickness designs, partial links, and measured printed-material behaviour need independent calibration. This is the physical motivation for the exponent **3**, not proof that the current coefficients reproduce the printed robot.
 
 `joint_beta` remains independent so existing calibrated/tuned configurations are preserved. To impose the complete-link similarity assumption, use the displayed **geometric βg** as `post_gen.joint_beta`. In the standard example βg ≈ **1.076353346**, while the retained example gain βj is **1.03**. They produce different gain reductions. With βj=βg, the ideal corresponding-station gain law is cubic in distance to the virtual apex; an arbitrary βj gives a different power of that distance. The current joint-index law is not corrected for a partial first link, and j_001 retains its independent mounting override. There is no claim of automatic physical calibration.
 
@@ -287,7 +308,18 @@ uv run python tools/set_joint_gains.py --mjcf build/three/spirob_physics_model.x
 uv run python -m mujoco.viewer --mjcf build/three/tuned.xml
 ```
 
-By default, the coefficient is anchored at the generator's i=1, while j_001 is preserved. Therefore j_002 gets coefficient/β³. Add `--anchor first-flexible` if the entered value should be the actual value at j_002. The tool verifies unchanged inertia, geometry, sites and actuator settings. For a permanent rebuild setting, also edit the corresponding `post_gen` values in your source JSON.
+By default, the coefficient is anchored at the generator's i=1, while j_001 is preserved. Therefore j_002 gets coefficient/β³. Add `--anchor first-flexible` if the entered value should be the actual value at j_002. This alias now always refers to j_002, even if excluded; it no longer silently reanchors to the next selected joint. For another intentional reference use `--reference-joint j_NNN`. The tool verifies unchanged inertia, geometry, sites and actuator settings. For a permanent rebuild setting, also edit the corresponding `post_gen` values in your source JSON.
+
+For a **stiffness-only** measured update (existing damping, including inherited damping, stays unchanged):
+
+```bash
+uv run python tools/set_joint_gains.py --mjcf build/spirob_physics_model.xml \
+  --out build/stiffness_fit.xml --k2 0.1830283318706319 --rho-k 0.9151416593531595 \
+  --json build/stiffness_fit_report.json
+```
+
+To change damping based on a separate dynamic fit, add `--d2 0.01 --rho-d 0.95`. Those example damping values are illustrative, not calibrated. Legacy `--stiffness K0 --damping D0 --beta 1.03` commands retain their defaults. Omitting `--damping` now preserves it. j_001 and additional `--exclude-joints` are always preserved; exclusions do not renumber joints or move the reference. If j_002 is excluded, its stored gain stays untouched; the supplied k2 still defines the requested law at that fixed reference for other joints. The tool writes a separate XML and before/after report, and verifies compiled gains, geometry, inertia and actuator settings. Rebuilding from JSON uses its configured damping law; preserving arbitrary existing XML damping is the XML tool's job.
+
 
 ### Compare inertia in a useful frame
 

@@ -105,6 +105,20 @@ function form() {
     const summary = document.createElement("summary");
     summary.textContent = title;
     detail.append(summary);
+    if (group === "dynamics") {
+      const convert = document.createElement("button");
+      convert.type = "button";
+      convert.id = "convert-joint2";
+      convert.textContent = "Convert current gains to j_002 values";
+      convert.onclick = () => {
+        const law = derive(params).gainLaw;
+        params.post_gen ??= {};
+        for (const key of ["k2", "rho_k", "d2", "rho_d"]) params.post_gen[key] = law[key];
+        form(); render();
+      };
+      detail.append(convert);
+    }
+
     for (const [key, f] of fields.filter(
       ([, f]) => f["x-group"] === group && available(f),
     )) {
@@ -143,7 +157,8 @@ function form() {
       const factor = f["x-unit"] === "m" ? 1000 : 1;
       let control;
       const update = (v) => {
-        set(params, key, v);
+        if (key.startsWith("post_gen.") && v === undefined) delete params.post_gen?.[key.split(".")[1]];
+        else set(params, key, v);
         if (key === "base_thickness_m") delete params.flat_thickness_ratio;
         if (key === "n_cables") {
           if (v !== 2)
@@ -220,7 +235,7 @@ function form() {
         control.value =
           resolved == null ? "" : Number((resolved * factor).toPrecision(12));
         control[key === "n_cables" ? "onchange" : "oninput"] = () =>
-          update(control.value === "" ? NaN : Number(control.value) / factor);
+          update(control.value === "" ? (key.startsWith("post_gen.") ? undefined : NaN) : Number(control.value) / factor);
         if (f.minimum !== undefined) control.min = f.minimum * factor;
         if (f.maximum !== undefined) control.max = f.maximum * factor;
         if (nullable) {
@@ -746,7 +761,7 @@ function drawGains() {
   }
   $("gains").innerHTML = svg;
   $("gain-note").textContent =
-    `Protected base: K₁ = ${fmt(geom.gains[0].k, 3)}, D₁ = ${fmt(geom.gains[0].d, 3)}. ${(params.post_gen?.joint_beta ?? 1.03) === 1 ? "Flexible-joint gains are constant." : "Flexible-joint gains follow the exponential law."} Core width is linear in axial position. For similar elastic sections, rotational stiffness scales approximately with size cubed; damping needs a material assumption or measurement.${params.thickness_profile === "constant" ? " Constant Y thickness breaks uniform geometric similarity: the cubic gain scaling is not derived from this profile." : ""}`;
+    `Reference j_002: k₂ = ${fmt(geom.gainLaw.k2, 10)} N·m/rad, ρk = ${fmt(geom.gainLaw.rho_k, 10)}, equivalent βⱼ = ${fmt(geom.gainLaw.beta_j, 10)}. Independent damping: d₂ = ${fmt(geom.gainLaw.d2, 10)}, ρd = ${fmt(geom.gainLaw.rho_d, 10)}. Protected mount K₁ = ${fmt(geom.gains[0].k, 3)}, D₁ = ${fmt(geom.gains[0].d, 3)}. Cubic scaling assumes geometrically similar flexures (K ≈ EI/length); it is not automatically valid for constant thickness, partial links or printed material. Static stiffness fitting does not identify damping.`;
 }
 function make3D() {
   faces = [];
@@ -981,7 +996,7 @@ function render(rebuild3 = true) {
       ["q₀ requested", `${fmt(geom.qRequested, 6)} rad`],
       ["q₀ effective", `${fmt(geom.q, 6)} rad`],
       ["βg = exp(bΔθ)", fmt(geom.beta, 6)],
-      ["βⱼ (gain law)", fmt(params.post_gen?.joint_beta ?? 1.03, 6)],
+      ["βⱼ (gain law)", fmt(geom.gainLaw.beta_j, 6)],
     ]
       .map(([a, b]) => `<div><span>${a}</span><strong>${b}</strong></div>`)
       .join("");

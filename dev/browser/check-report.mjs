@@ -16,6 +16,28 @@ try{
  await page.waitForFunction(()=>window.spirob?.valid);
  await page.selectOption('#preset','2');
  await page.waitForFunction(()=>window.spirob?.valid && window.spirob.params.n_cables===2);
+ await page.locator('details[data-group="dynamics"] summary').click();
+ const originalGains=await page.evaluate(()=>window.spirob.geometry.gains);
+ await page.locator('#convert-joint2').click();
+ const converted=await page.evaluate(()=>({p:window.spirob.params.post_gen,g:window.spirob.geometry.gains}));
+ assert.ok(Math.abs(converted.p.k2-.2/1.03**3)<1e-14);
+ for(let i=0;i<originalGains.length;i++) {
+   assert.ok(Math.abs(originalGains[i].k-converted.g[i].k)<1e-13);
+   assert.ok(Math.abs(originalGains[i].d-converted.g[i].d)<1e-13);
+ }
+ await page.locator('[id="param-post_gen.k2"]').fill('0.35');
+ await page.locator('[id="param-post_gen.rho_k"]').fill('0.8');
+ const fitted=await page.evaluate(()=>window.spirob.geometry.gains);
+ assert.ok(Math.abs(fitted[2].k-.35*.8)<1e-14);
+ assert.equal(fitted[0].k,originalGains[0].k);
+ for(let i=0;i<originalGains.length;i++) assert.equal(fitted[i].d,converted.g[i].d);
+ await page.locator('[id="param-post_gen.k2"]').fill('');
+ assert.ok(await page.evaluate(()=>window.spirob.valid && !('k2' in window.spirob.params.post_gen)));
+ await page.locator('[id="param-post_gen.k2"]').fill('0.35');
+ await page.locator('[id="param-post_gen.d2"]').fill('0.015');
+ await page.locator('[id="param-post_gen.rho_d"]').fill('0.96');
+ assert.ok(await page.evaluate(()=>Math.abs(window.spirob.geometry.gains[2].d-.015*.96)<1e-14));
+ assert.ok((await page.locator('#gain-note').textContent()).includes('Reference j_002'));
  await page.locator('details[data-group="section"] summary').click();
  await page.selectOption('#param-thickness_profile','constant');
  await page.getByRole('checkbox',{name:'Base centre thickness automatic'}).uncheck();
@@ -50,6 +72,7 @@ with zipfile.ZipFile(p) as z:
  assert z.testzip() is None
  raw=z.read('params.json');t=z.read('report.md').decode()
  assert hashlib.sha256(raw).hexdigest() in t
+ assert 'Fixed reference j_002' in t and 'rho_k' in t and 'rho_d' in t
  assert 'DESIGN PREVIEW' in t and 'Selected link: 3; section station: 65%' in t
  assert json.loads(raw)['build']['elastic_core_percent']==8
  assert json.loads(raw)['thickness_profile']=='constant'
@@ -70,5 +93,5 @@ with zipfile.ZipFile(p) as z:
  await page.setViewportSize({width:390,height:844});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  assert.deepEqual(errors,[]);
- console.log('Report browser checks passed: static project subpath, constant-thickness UI/preview, visible bore openings and toggle, ZIP/CRC, exact params/hash, selected link/station, SVG/PNG, printable PDF, invalid input and mobile width.');
+ console.log('Report browser checks passed: joint-2 conversion, independent damping, clearing optional gains, report convention, static project subpath, constant-thickness UI/preview, visible bore openings and toggle, ZIP/CRC, exact params/hash, selected link/station, SVG/PNG, printable PDF, invalid input and mobile width.');
 }finally{await browser?.close();server.kill();}
