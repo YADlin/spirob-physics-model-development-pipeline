@@ -146,6 +146,11 @@ def validate_params(p: dict):
     if not isinstance(post, dict):
         errors.append("  • 'post_gen' must be a JSON object  (got non-object)")
     else:
+        from spirob.joint_gains import resolve_gains
+        try:
+            resolve_gains(post, 2)
+        except ValueError as exc:
+            errors.append(str(exc))
         timestep = post.get('timestep')
         if timestep is not None and (isinstance(timestep, bool) or not isinstance(timestep, (int, float)) or not math.isfinite(timestep) or timestep <= 0):
             errors.append('  • post_gen.timestep must be finite and positive')

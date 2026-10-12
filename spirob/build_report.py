@@ -133,11 +133,16 @@ def write_build_report(stage, params, geometry, model):
             if isinstance(value,dict): fields(value,item,prefix+key+'.')
             else: selected.append((prefix+key,item.get('title',key),json.dumps(value,ensure_ascii=False),item.get('x-unit','')))
     fields(params,schema)
+    from spirob.joint_gains import resolve_gains
+    preset = {'safe': (.2,.2), 'fast': (.01,.001), 'high': (.1,.02)}.get(params.get('build',{}).get('physics_preset'), (.2,.01))
+    law = resolve_gains(params.get('post_gen', {}), len(records), *preset)
+    for key in ('k2','rho_k','beta_j','d2','rho_d'):
+        metrics['Joint law '+key] = law[key]
     notes=[f'Completed build record. Created (UTC): {datetime.now(timezone.utc).isoformat()}.',f'Generator revision: {revision}.',
            'Parameters below are the resolved build inputs, including command-line overrides. params.json is byte-identical to build_params.json.',
            'r_inner(θ) = a exp(bθ); r_outer(θ) = a E exp(bθ); E = exp(2πb). θ increases from tip to base.',
            'Core c(z) = (p/100) Wref(z): linear with axial distance, geometric at complete-link stations. Two-cable Y follows the selected thickness law.',
-           'K_i = K0 / beta_j^(3(i−1)); D_i = D0 / beta_j^(3(i−1)); protected base overrides apply. These are assumptions, not material calibration.',
+           'Fixed reference j_002: k_i = k2 * rho_k^(i−2), d_i = d2 * rho_d^(i−2), i≥2. Equivalent beta_j = rho_k^(−1/3). Legacy k2=K0/joint_beta^3, d2=D0/joint_beta^3; explicit canonical fields override only their own channel. Mount j_001 remains separate. Cubic scaling follows K≈EI/length for geometrically similar flexures, not automatically for constant thickness, partial links or printed materials. Static stiffness fitting does not identify damping. Geometric taper and fitted decay are independent.',
            'Manufacturing bores are straight between first/last simulation anchors; MJCF routing sites are unchanged. Bore axes and clearance checks are recorded in cad/spirob_cad_report.json.',
            'Drawings use compiled simulation meshes; core dimensions are reference overlays. Fabrication channels/core are not simulation mass/contact geometry. CAD is in mm; simulation geometry is in metres.',
            'The report records the files at build time. Later edits with joint/sensor tools do not update this record; regenerate the build for a new record.']

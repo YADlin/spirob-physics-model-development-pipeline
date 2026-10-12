@@ -362,23 +362,10 @@ def write_mjcf_from_sites_csv(
     # Optional tip reference site
     tip_site_pos    = post.get("tip_site_pos")     # [x, y, z] in last body frame
 
-        # ---- Joint stiffness/damping geometric decay (β > 1 gives decreasing values) ----
-    base_k = post.get("joint_stiffness_base", config.joint_stiffness)
-    base_d = post.get("joint_damping_base",   config.joint_damping)
-    beta   = post.get("joint_beta",           config.beta)
-    beta3  = beta ** 3
-
-    # Per-joint values: k_i = base_k / (β³)^i  (i=0 is the base/first joint)
-    joint_stiffness = [base_k / (beta3 ** i) for i in range(len(frames))]
-    joint_damping   = [base_d / (beta3 ** i) for i in range(len(frames))]
-
-    # Optional independent override for joint 0 (the base joint)
-    first_k = post.get("first_joint_stiffness")
-    first_d = post.get("first_joint_damping")
-    if first_k is not None:
-        joint_stiffness[0] = first_k
-    if first_d is not None:
-        joint_damping[0] = first_d
+    from spirob.joint_gains import resolve_gains
+    gains = resolve_gains(post, len(frames), config.joint_stiffness,
+                          config.joint_damping, config.beta)
+    joint_stiffness, joint_damping = gains['stiffness'], gains['damping']
 
     # Apply robot placement overrides to the root body
     if robot_pos is not None:
