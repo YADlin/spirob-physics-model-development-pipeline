@@ -1,0 +1,134 @@
+[
+ {
+  "design": "current_6p3",
+  "phi_deg": 6.3,
+  "f_est": 7.240398193357355,
+  "envelope_area_cm2": 1121.4356413970877,
+  "dynamic_area_cm2": 321.44,
+  "dynamic_fraction_inside_envelope": 1.0,
+  "egg_in_envelope": true,
+  "egg_clearance_from_curl_path_mm": 22.62031751511869,
+  "max_reach_m": 0.22365540474970463
+ },
+ {
+  "design": "phi4p0",
+  "phi_deg": 4.0,
+  "f_est": 3.6376749883067854,
+  "envelope_area_cm2": 1107.613847264402,
+  "dynamic_area_cm2": 445.76000000000005,
+  "dynamic_fraction_inside_envelope": 1.0,
+  "egg_in_envelope": true,
+  "egg_clearance_from_curl_path_mm": 16.968934066474226,
+  "max_reach_m": 0.22377826834169598
+ },
+ {
+  "design": "phi5p0",
+  "phi_deg": 5.0,
+  "f_est": 4.51482681103526,
+  "envelope_area_cm2": 1044.9010628166468,
+  "dynamic_area_cm2": 372.32,
+  "dynamic_fraction_inside_envelope": 1.0,
+  "egg_in_envelope": true,
+  "egg_clearance_from_curl_path_mm": 17.344918597364025,
+  "max_reach_m": 0.2237357363524368
+ },
+ {
+  "design": "phi6p3",
+  "phi_deg": 6.3,
+  "f_est": 6.065377588335478,
+  "envelope_area_cm2": 1012.6301374461241,
+  "dynamic_area_cm2": 308.0,
+  "dynamic_fraction_inside_envelope": 1.0,
+  "egg_in_envelope": true,
+  "egg_clearance_from_curl_path_mm": 17.763397989473834,
+  "max_reach_m": 0.22373042879761346
+ },
+ {
+  "design": "phi8p0",
+  "phi_deg": 8.0,
+  "f_est": 9.036285233045797,
+  "envelope_area_cm2": 1018.5548464829153,
+  "dynamic_area_cm2": 259.04,
+  "dynamic_fraction_inside_envelope": 1.0,
+  "egg_in_envelope": true,
+  "egg_clearance_from_curl_path_mm": 18.38607176072604,
+  "max_reach_m": 0.22378908936274336
+ },
+ {
+  "design": "phi10p0",
+  "phi_deg": 10.0,
+  "f_est": 14.322378056405404,
+  "envelope_area_cm2": 1070.2290454788842,
+  "dynamic_area_cm2": 227.68,
+  "dynamic_fraction_inside_envelope": 1.0,
+  "egg_in_envelope": true,
+  "egg_clearance_from_curl_path_mm": 20.593812011258088,
+  "max_reach_m": 0.2237886561979955
+ },
+ {
+  "design": "phi12p0",
+  "phi_deg": 12.0,
+  "f_est": 15.581153390882898,
+  "envelope_area_cm2": 908.011509970284,
+  "dynamic_area_cm2": 185.76000000000002,
+  "dynamic_fraction_inside_envelope": 1.0,
+  "egg_in_envelope": true,
+  "egg_clearance_from_curl_path_mm": 13.64959712695747,
+  "max_reach_m": 0.22376337858027162
+ },
+ {
+  "design": "phi15p0",
+  "phi_deg": 15.0,
+  "f_est": 29.575129440203327,
+  "envelope_area_cm2": 1040.7221985697925,
+  "dynamic_area_cm2": 187.20000000000002,
+  "dynamic_fraction_inside_envelope": 1.0,
+  "egg_in_envelope": true,
+  "egg_clearance_from_curl_path_mm": 19.94987234754286,
+  "max_reach_m": 0.22375103551055578
+ },
+ {
+  "design": "paper_phi5",
+  "phi_deg": 5.0,
+  "f_est": 5.468780844506484,
+  "envelope_area_cm2": 1471.9703801438732,
+  "dynamic_area_cm2": 446.72,
+  "dynamic_fraction_inside_envelope": 1.0,
+  "egg_in_envelope": true,
+  "egg_clearance_from_curl_path_mm": 35.689441100926096,
+  "max_reach_m": 0.24721266640049566
+ },
+ {
+  "design": "paper_phi10",
+  "phi_deg": 10.0,
+  "f_est": 13.874765616486647,
+  "envelope_area_cm2": 1228.7928602452712,
+  "dynamic_area_cm2": 249.76,
+  "dynamic_fraction_inside_envelope": 1.0,
+  "egg_in_envelope": true,
+  "egg_clearance_from_curl_path_mm": 20.965212833626662,
+  "max_reach_m": 0.24725190779060668
+ },
+ {
+  "design": "paper_phi15",
+  "phi_deg": 15.0,
+  "f_est": 24.110236314610034,
+  "envelope_area_cm2": 1050.2121025711112,
+  "dynamic_area_cm2": 185.12,
+  "dynamic_fraction_inside_envelope": 1.0,
+  "egg_in_envelope": true,
+  "egg_clearance_from_curl_path_mm": 17.14333711947267,
+  "max_reach_m": 0.2471911490826674
+ },
+ {
+  "design": "osr_print_phi10",
+  "phi_deg": 10.0004,
+  "f_est": 11.745598607999883,
+  "envelope_area_cm2": 1093.1194818839247,
+  "dynamic_area_cm2": 231.20000000000002,
+  "dynamic_fraction_inside_envelope": 1.0,
+  "egg_in_envelope": true,
+  "egg_clearance_from_curl_path_mm": 16.014712736530893,
+  "max_reach_m": 0.23965201063579447
+ }
+]

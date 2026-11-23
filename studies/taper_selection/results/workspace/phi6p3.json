@@ -1,0 +1,11 @@
+{
+ "design": "phi6p3",
+ "phi_deg": 6.3,
+ "f_est": 6.065377588335478,
+ "envelope_area_cm2": 1012.6301374461241,
+ "dynamic_area_cm2": 308.0,
+ "dynamic_fraction_inside_envelope": 1.0,
+ "egg_in_envelope": true,
+ "egg_clearance_from_curl_path_mm": 17.763397989473834,
+ "max_reach_m": 0.22373042879761346
+}

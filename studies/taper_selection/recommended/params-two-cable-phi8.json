@@ -1,0 +1,50 @@
+{
+  "L": 0.22628,
+  "d_tip": 0.007139,
+  "phi_deg": 8.0,
+  "Delta_theta_deg": 30.0,
+  "terminal_unit_policy": "exact_requested_length",
+  "n_cables": 2,
+  "tendon_inward_shift": 0.0015,
+  "show_preview": false,
+  "notch_factor": 0.25,
+  "nlobe_t": 0.5,
+  "post_gen": {
+    "_comment": "k2/rho_k from the study law K = kappa W^3 (anchored to spirob-mjlab j_002 = 0.183 N m/rad on the current robot); identify on the print. Set hinge ranges to +/- Delta_theta after building (the generator writes +/- pi).",
+    "robot_pos": [
+      0,
+      0,
+      0.22628
+    ],
+    "robot_quat": [
+      0,
+      0,
+      -1,
+      0
+    ],
+    "joint_stiffness_base": 0.2,
+    "joint_damping_base": 0.01,
+    "joint_beta": 1.03,
+    "first_joint_stiffness": 100,
+    "first_joint_damping": 50,
+    "tip_site_pos": [
+      0,
+      0,
+      0.005
+    ],
+    "timestep": 0.0001,
+    "k2": 0.2705913468040487,
+    "rho_k": 0.7828119699240463,
+    "d2": 0.013529567340202437,
+    "rho_d": 0.7828119699240463
+  },
+  "base_thickness_m": null,
+  "thickness_profile": "linear",
+  "build": {
+    "collision_mode": "convex",
+    "mesh_layout": "shared",
+    "elastic_core_percent": 5.0,
+    "cad": true
+  },
+  "_comment": "Recommended body from the taper-selection study (studies/taper_selection): phi = 8 deg, L and tip width of the current robot, Delta_theta = 30 deg. Slice flexures at 0.12 mm layers or finer."
+}

@@ -1,0 +1,11 @@
+{
+ "design": "paper_phi5",
+ "phi_deg": 5.0,
+ "f_est": 5.468780844506484,
+ "envelope_area_cm2": 1471.9703801438732,
+ "dynamic_area_cm2": 446.72,
+ "dynamic_fraction_inside_envelope": 1.0,
+ "egg_in_envelope": true,
+ "egg_clearance_from_curl_path_mm": 35.689441100926096,
+ "max_reach_m": 0.24721266640049566
+}
