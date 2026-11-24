@@ -1,0 +1,11 @@
+{
+ "design": "osr_print_phi10",
+ "phi_deg": 10.000381828753435,
+ "f_est": 11.745533829919998,
+ "envelope_area_cm2": 1093.1183370299022,
+ "dynamic_area_cm2": 233.6,
+ "dynamic_fraction_inside_envelope": 1.0,
+ "egg_in_envelope": true,
+ "egg_clearance_from_curl_path_mm": 16.450486887955808,
+ "max_reach_m": 0.2396520069819934
+}

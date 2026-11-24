@@ -1,0 +1,11 @@
+{
+ "design": "phi15p0",
+ "phi_deg": 15.0,
+ "f_est": 29.575129440203327,
+ "envelope_area_cm2": 1040.7221985697925,
+ "dynamic_area_cm2": 187.20000000000002,
+ "dynamic_fraction_inside_envelope": 1.0,
+ "egg_in_envelope": true,
+ "egg_clearance_from_curl_path_mm": 19.94987234754286,
+ "max_reach_m": 0.22375103551055578
+}

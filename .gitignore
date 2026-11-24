@@ -50,3 +50,9 @@ node_modules/
 
 /design_report/
 /design_report.zip
+
+# taper-selection study: generated models
+studies/taper_selection/_build/
+studies/taper_selection/results/**/*.npz
+studies/taper_selection/results/wrap/*/
+studies/taper_selection/results/position/wrap/*/
