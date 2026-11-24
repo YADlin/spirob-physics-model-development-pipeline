@@ -39,11 +39,12 @@ afterwards, the picture splits by length:
 
 * **Length matters more than taper.** Only the 45 cm bodies (and one 37.5 cm case) could hold the egg
   and move it by its own diameter. At 45 cm, 6.3° did it at the most positions for the least force.
-* **Cable friction is what makes the wraps happen.** Without it no 45 mm wrap passed 110° on any body
-  longer than 22.6 cm; every strict wrap (one stretch ≥ 180°) needed μ ≥ 0.2. The tip then curls round
+* **Cable friction is what makes the wraps happen.** Without it no 45 mm wrap passed 70° on any body
+  longer than 22.6 cm; every strict wrap of the egg (one stretch ≥ 180°) needed μ ≥ 0.2 (small
+  objects, 15–25 mm, can be wrapped without friction). The tip then curls round
   the egg instead of coiling up beside it (Animation 4). Friction does not make the body curl from the
   base under one cable (the bending centre moves ≤ 0.08 L), but it gives the body memory: released at
-  the same force, the tip is 20–85 mm from where it was when pulled, and settled shapes leave the
+  the same force, the tip is 10–85 mm from where it was when pulled, and settled shapes leave the
   frictionless one-parameter curve by 5–15 mm on average. At μ = 0.3 the body no longer packs at
   1.25 × the frictionless packing force.
 * **The authors' reach-then-wrap sequence beats a plain pull** on a held egg (235° against 105°,
@@ -52,7 +53,8 @@ afterwards, the picture splits by length:
   (largest diameter for the free length L − s): 15–25 mm at s/L 0.5–0.8 on 22.6 cm 8°, 25–45 mm at
   s/L 0.7–0.8 on 45 cm 8°. Free objects of every size are pushed off.
 * **Release is violent.** When the holder lets go at full cable force, the body pulls the egg 70–300 mm
-  into its coil within about 0.2 s, where it stays held (Animation 7).
+  into its coil within about 0.2 s, where it usually stays held (Animation 7); a few 45 cm cases
+  fling it out.
 * **The task egg position** (5 cm across, 7.6 cm from the base) is never wrapped by any body (best 89°).
 
 **Recommendation, revised.** Part 1's "print 8°" was based on the faulty grasp metric and is withdrawn.
