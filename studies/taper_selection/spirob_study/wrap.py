@@ -35,7 +35,7 @@ import numpy as np
 
 from spirob.cable_friction import CableFriction
 
-from . import designs as D, model as M, sim
+from . import actuation as A, designs as D, model as M, sim
 
 EGG_MASS = 0.060           # kg, hen's egg
 MU_CONTACT = 0.5           # TPU on egg shell (assumed; dry rubber-like on smooth ceramic 0.4-0.6)
@@ -59,6 +59,45 @@ class Trial:
     transport: bool = True
     keep_frames: bool = False
     extra: dict = field(default_factory=dict)
+    gains: object = None             # actuation.Gains; None = force control (parts 1-2)
+    trace: bool = False              # keep a 50 Hz trace of cable lengths and tensions
+    timestep: float = 2e-4
+
+
+class _Act:
+    """Applies a tension programme through the chosen actuator (and friction)."""
+
+    def __init__(self, m, cf, drv):
+        self.m, self.cf, self.drv = m, cf, drv
+        self.peak_T = np.zeros(2)
+
+    def __call__(self, d, ten):
+        if self.drv is None:
+            self.cf.apply(d, tension=ten)
+            T = np.asarray(ten, float)
+        else:
+            T = self.drv.step(d, ten)
+            if self.cf.mu > 0:
+                self.cf.apply(d, correction=True)
+        self.peak_T = np.maximum(self.peak_T, T)
+        return T
+
+    def snapshot(self, d, ten):
+        if self.drv is None:
+            return (np.nan, np.nan, float(d.ten_length[0]), float(d.ten_length[1]), float(ten[0]), float(ten[1]))
+        return self.drv.snapshot(d)
+
+    def state(self):
+        if self.drv is None:
+            return None
+        return (self.drv.e.copy(), self.drv.cmd.copy(), self.drv.k, self.drv.base.copy(), self.drv.T_meas.copy(),
+                self.m.actuator_forcerange.copy())
+
+    def restore(self, s):
+        if s is not None:
+            self.drv.e, self.drv.cmd, self.drv.k = s[0].copy(), s[1].copy(), s[2]
+            self.drv.base, self.drv.T_meas = s[3].copy(), s[4].copy()
+            self.m.actuator_forcerange[:] = s[5]
 
 
 # ----------------------------------------------------------------- metrics
@@ -214,9 +253,16 @@ class Programme:
 def run(tr: Trial) -> dict:
     R = tr.diam / 2
     x, y = tr.pos
-    sm = M.make(tr.design, f_max=1e3, tag=f"wrap_{os.getpid()}",
-                objects=[dict(name="obj", pos=(x, y), radius=R, free=True, weld=tr.anchored)])
-    m, d = sm.load()
+    objs = [dict(name="obj", pos=(x, y), radius=R, free=True, weld=tr.anchored)]
+    if tr.gains is None or tr.gains.mode == "force":
+        sm = M.make(tr.design, f_max=1e3, tag=f"wrap_{os.getpid()}", objects=objs, timestep=tr.timestep)
+        m, d = sm.load()
+        drv = None
+    else:
+        sm, st, kp = A.build(tr.design, tr.gains, objects=objs, tag=f"wrap_{os.getpid()}", timestep=tr.timestep)
+        m, d = sm.load()
+        drv = A.Driver(m, st, tr.gains, kp)
+        drv.prime(d)
     dt = m.opt.timestep
     # "anchored": a holder (stiff weld) keeps the egg in place and lets go when
     # the carry starts; otherwise the egg sits on its pedestal with dry
@@ -237,6 +283,10 @@ def run(tr: Trial) -> dict:
     links = _link_geoms(m, sm)
     near, far = (1, 0) if tr.side > 0 else (0, 1)
     cf = CableFriction(m, mu=tr.mu)
+    act = _Act(m, cf, drv)
+    trace, every_tr = [], int(round(0.02 / dt))
+    peak_N = 0.0
+    sq_hist = []                 # robot-egg normal force every 10 ms
     prog = Programme(tr.strategy, tr.f_pack, dt, tr.t_ramp)
     # "reach" starts from the packed body, as in the paper: the object is not
     # in the scene while the body packs, and the position is infeasible if
@@ -265,12 +315,17 @@ def run(tr: Trial) -> dict:
         ten = [0.0, 0.0]
         ten[near], ten[far] = fn, ff
         d.ctrl[:] = 0.0
-        cf.apply(d, tension=ten)
+        T = act(d, ten)
         mujoco.mj_step(m, d)
         if tr.keep_frames and k % every == 0:
-            frames.append((t, d.qpos.copy(), tuple(ten), prog.phase))
+            frames.append((t, d.qpos.copy(), tuple(T), prog.phase))
+        if tr.trace and k % every_tr == 0:
+            trace.append((t, prog.phase, *act.snapshot(d, ten), contact_normal_sum(m, d, gid)))
         if k % 50 == 0:
             peak_push = max(peak_push, contact_push(m, d, gid))
+            n_now = contact_normal_sum(m, d, gid)
+            peak_N = max(peak_N, n_now)
+            sq_hist.append(n_now)
         if not tr.anchored and dropped_t is None and k % 50 == 0:
             if np.linalg.norm(d.xpos[bid, :2] - p0) > PEDESTAL_HALF:
                 nsum = contact_normal_sum(m, d, gid)
@@ -283,7 +338,8 @@ def run(tr: Trial) -> dict:
         return dict(design=tr.design.name, phi_deg=tr.design.phi_deg, L=tr.design.L, x=x, y=y,
                     d_mm=tr.diam * 1e3, strategy=tr.strategy, t_ramp=tr.t_ramp, mu=tr.mu,
                     anchored=tr.anchored, f_pack=tr.f_pack, infeasible=True, wrap=False, grasp=False,
-                    wrap_deg=0.0, carry_mm=0.0, dropped=False)
+                    wrap_deg=0.0, carry_mm=0.0, dropped=False, mode=_mode(tr))
+    unstable = bool(d.warning[mujoco.mjtWarning.mjWARN_BADQACC].number > 0)
     c = d.xpos[bid, :2].copy()
     w = wrap_angle(m, d, links, c, R)
     w["curl_deg"] = curl_angle(m, d, c)
@@ -294,14 +350,19 @@ def run(tr: Trial) -> dict:
                weight_ok=bool(MU_CONTACT * nsum >= EGG_MASS * 9.81),
                dropped=dropped_t is not None, obj_travel_mm=float(np.linalg.norm(c - p0) * 1e3),
                old_enclosure_deg=sim.enclosure_angle(m, d, c, R), peak_push_N=peak_push,
-               final_xy=c.tolist())
+               final_xy=c.tolist(), mode=_mode(tr), kp=(drv.kp if drv else 0.0),
+               peak_squeeze_N=peak_N, sustained_squeeze_N=_sustained(sq_hist), unstable=unstable)
     out["wrap"] = bool(w["wrap_deg"] >= 180.0 and not out["dropped"])
     out["in_curl"] = bool(w["curl_deg"] >= CURL_MIN and out["weight_ok"] and not out["dropped"])
     if tr.transport and (out["wrap"] or out["in_curl"]):
         out.update(_transport(m, d, cf, tr, links, gid, bid, R, near, far, frames if tr.keep_frames else None,
-                              t0=k * dt, every=every))
+                              t0=k * dt, every=every, act=act, trace=trace if tr.trace else None))
     else:
         out.update(grasp=False, carry_mm=0.0, carry_best=None)
+    out["peak_T_N"] = act.peak_T.tolist()
+    out["peak_squeeze_N"] = max(out["peak_squeeze_N"], out.get("peak_squeeze_carry_N", 0.0))
+    if tr.trace:
+        out["trace"] = trace
     if tr.keep_frames:      # the per-process XML is reused, so keep its text
         out["frames"] = frames
         out["xml_text"] = sm.xml_path.read_text()
@@ -309,7 +370,20 @@ def run(tr: Trial) -> dict:
     return out
 
 
-def _transport(m, d, cf, tr, links, gid, bid, R, near, far, frames, t0, every) -> dict:
+def _sustained(x, n: int = 10) -> float:
+    """Largest force held for at least n samples (10 x 10 ms = 0.1 s)."""
+    x = np.asarray(x, float)
+    if len(x) < n:
+        return float(x.min()) if len(x) else 0.0
+    w = np.lib.stride_tricks.sliding_window_view(x, n).min(axis=1)
+    return float(w.max())
+
+
+def _mode(tr) -> str:
+    return "force" if tr.gains is None else tr.gains.label()
+
+
+def _transport(m, d, cf, tr, links, gid, bid, R, near, far, frames, t0, every, act=None, trace=None) -> dict:
     """Release the egg, then hold it and move it with the cables.
 
     1. Release: the holder lets go (or the egg is lifted off its pedestal) and
@@ -334,13 +408,28 @@ def _transport(m, d, cf, tr, links, gid, bid, R, near, far, frames, t0, every) -
     ten[near] = f_w
     c_rel = d.xpos[bid, :2].copy()
     fr_rel = []
+    every_tr = int(round(0.02 / dt))
+    frz = act is not None and act.drv is not None and act.drv.g.freeze_release
+    if frz:
+        act.drv.freeze(d)                          # hold both cable lengths while the holder lets go
+    c0 = d.xpos[bid, :2].copy()
+    far_mm = 0.0
+    peak_N = 0.0
     for k in range(int(0.5 / dt)):
-        cf.apply(d, tension=ten)
+        T = act(d, ten)
         mujoco.mj_step(m, d)
         if frames is not None and k % every == 0:
-            fr_rel.append((t0 + k * dt, d.qpos.copy(), tuple(ten), "release"))
+            fr_rel.append((t0 + k * dt, d.qpos.copy(), tuple(T), "release"))
+        if trace is not None and k % every_tr == 0:
+            trace.append((t0 + k * dt, "release", *act.snapshot(d, ten), contact_normal_sum(m, d, gid)))
+        if k % 50 == 0:
+            far_mm = max(far_mm, float(np.linalg.norm(d.xpos[bid, :2] - c0) * 1e3))
+            peak_N = max(peak_N, contact_normal_sum(m, d, gid))
     if frames is not None:
         frames.extend(fr_rel)
+    if frz:
+        act.drv.unfreeze()
+        act.drv.base = np.array([d.ten_length[0], d.ten_length[1]])   # moves start from the held lengths
     t0 += 0.5
     c_set = d.xpos[bid, :2].copy()
     w_set = wrap_angle(m, d, links, c_set, R)["wrap_deg"]
@@ -348,10 +437,11 @@ def _transport(m, d, cf, tr, links, gid, bid, R, near, far, frames, t0, every) -
     n_set = contact_normal_sum(m, d, gid)
     secured = bool((w_set >= 180.0 or k_set >= CURL_MIN) and MU_CONTACT * n_set >= EGG_MASS * 9.81)
     out = dict(snap_mm=float(np.linalg.norm(c_set - c_rel) * 1e3), wrap_after_release=w_set,
-               curl_after_release=k_set, grip_after_release_N=n_set, secured=secured)
+               curl_after_release=k_set, grip_after_release_N=n_set, secured=secured,
+               release_travel_max_mm=far_mm, peak_squeeze_carry_N=peak_N)
     if not secured:
         return dict(out, carry_mm=0.0, carry_best=None, carry={}, grasp=False)
-    state = (d.qpos.copy(), d.qvel.copy(), [t.copy() for t in cf.t_seg])
+    state = (d.qpos.copy(), d.qvel.copy(), [t.copy() for t in cf.t_seg], act.state(), d.ctrl.copy())
     moves = {"tighten": (lambda u: (f_w * (1 + u), 0.0)),
              "swing": (lambda u: (f_w, 0.8 * f_w * u)),
              "relax": (lambda u: (f_w * (1 - 0.4 * u), 0.0))}
@@ -359,29 +449,38 @@ def _transport(m, d, cf, tr, links, gid, bid, R, near, far, frames, t0, every) -
     for name, fn in moves.items():
         d.qpos[:], d.qvel[:] = state[0], state[1]
         cf.t_seg = [t.copy() for t in state[2]]
+        act.restore(state[3]); d.ctrl[:] = state[4]
         mujoco.mj_forward(m, d)
         n = int(3.0 / dt)
-        held_dist, ok, fr = 0.0, True, []
+        held_dist, ok, fr, tr_m = 0.0, True, [], []
         for k in range(n):
             fnr, ffr = fn(k / n)
             ten = [0.0, 0.0]
             ten[near], ten[far] = fnr, ffr
-            cf.apply(d, tension=ten)
+            T = act(d, ten)
             mujoco.mj_step(m, d)
             if frames is not None and k % every == 0:
-                fr.append((t0 + k * dt, d.qpos.copy(), tuple(ten), f"carry:{name}"))
+                fr.append((t0 + k * dt, d.qpos.copy(), tuple(T), f"carry:{name}"))
+            if trace is not None and k % every_tr == 0:
+                tr_m.append((t0 + k * dt, f"carry:{name}", *act.snapshot(d, ten), contact_normal_sum(m, d, gid)))
             if k % 250 == 0 or k == n - 1:
                 c = d.xpos[bid, :2]
                 held_in = (wrap_angle(m, d, links, c, R)["wrap_deg"] >= 180.0 or curl_angle(m, d, c) >= CURL_MIN)
-                carry = MU_CONTACT * contact_normal_sum(m, d, gid) >= EGG_MASS * 9.81
+                n_c = contact_normal_sum(m, d, gid)
+                peak_N = max(peak_N, n_c)
+                carry = MU_CONTACT * n_c >= EGG_MASS * 9.81
                 if not held_in or not carry:
                     ok = False
                     break
                 held_dist = max(held_dist, float(np.linalg.norm(c - c_set)))
         held_all[name] = dict(dist_mm=held_dist * 1e3, held_to_end=ok)
         if held_dist > best or best_frames is None:
-            best, best_name, best_frames = held_dist, name, fr
+            best, best_name, best_frames, best_tr = held_dist, name, fr, tr_m
     if frames is not None and best_frames:
         frames.extend(best_frames)
+    if trace is not None:
+        trace.extend(best_tr)
+    out["peak_squeeze_carry_N"] = peak_N
+    out["unstable_carry"] = bool(d.warning[mujoco.mjtWarning.mjWARN_BADQACC].number > 0)
     return dict(out, carry_mm=best * 1e3, carry_best=best_name if best > 0 else None, carry=held_all,
                 grasp=bool(best >= tr.diam))

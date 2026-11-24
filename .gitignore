@@ -55,3 +55,4 @@ node_modules/
 studies/taper_selection/_build/
 studies/taper_selection/results/**/*.npz
 studies/taper_selection/results/wrap/*/
+studies/taper_selection/results/position/wrap/*/

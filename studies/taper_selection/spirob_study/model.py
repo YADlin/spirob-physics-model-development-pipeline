@@ -79,7 +79,8 @@ def anchor_kappa() -> float:
 
 def make(design: Design, *, law: str = "cubic", limits: str = "dtheta",
          f_max: float = 50.0, timestep: float = 2e-4, objects: list[dict] | None = None,
-         tag: str = "study", k_factor=None) -> StudyModel:
+         tag: str = "study", k_factor=None, actuation: str = "motor", kp: float = 2500.0,
+         kv: float = 20.0, ctrlrange: tuple[float, float] = (0.0, 1.0)) -> StudyModel:
     """Write ``<build>/<tag>.xml`` and return its description.
 
     law:    "cubic" (K ~ W^3, default), "quadratic" (K ~ W^2, the
@@ -89,6 +90,9 @@ def make(design: Design, *, law: str = "cubic", limits: str = "dtheta",
     objects: list of {"name", "pos": (x, y), "radius", "free": bool}.
     k_factor: optional per-joint multiplier (array, or callable of the joint
             widths), applied after the law.
+    actuation: "motor" (cable force, ctrl = -tension) or "position" (cable
+            length servo with gains kp, kv and range ctrlrange, ctrl = length;
+            f_max is its pull limit).
     """
     bdir = design.build_dir
     tree = ET.parse(bdir / "spirob_physics_model.xml")
@@ -213,8 +217,18 @@ def make(design: Design, *, law: str = "cubic", limits: str = "dtheta",
     for mtr in list(act):
         act.remove(mtr)
     for c in (0, 1):
-        ET.SubElement(act, "motor", name=f"motor_c{c}", tendon=f"cable_{c}", gear="1",
-                      ctrllimited="true", ctrlrange=f"{-f_max:.6g} 0")
+        if actuation == "motor":
+            ET.SubElement(act, "motor", name=f"motor_c{c}", tendon=f"cable_{c}", gear="1",
+                          ctrllimited="true", ctrlrange=f"{-f_max:.6g} 0")
+        elif actuation == "position":
+            # cable-length servo (as in spirob-mjlab): F = kp (L_cmd - L) - kv dL/dt,
+            # pull only, clipped at f_max; ctrl is the commanded cable length
+            lo, hi = ctrlrange
+            ET.SubElement(act, "position", name=f"pos_c{c}", tendon=f"cable_{c}", kp=f"{kp:.8g}",
+                          kv=f"{kv:.8g}", ctrllimited="true", ctrlrange=f"{lo:.8g} {hi:.8g}",
+                          forcelimited="true", forcerange=f"{-f_max:.8g} 0")
+        else:
+            raise ValueError(actuation)
     sens = root.find("sensor")
     if sens is None:
         sens = ET.SubElement(root, "sensor")

@@ -16,6 +16,10 @@ Part 2 (cable friction, length, wrap and grasp; 24 Nov 2026):
   friction   load-unload and workspaces with cable friction        ~40 min
   wrap       egg grid, pull baseline, size x position              ~4 h
   figures2   figures 10-14 and animations 4-7                      ~10 min
+Part 3 (cable length control and force/length hybrids; 25 Nov 2026):
+  position   strokes, length ramps, memory, force-length check    ~10 min
+  wrap3      held/pedestal egg under 4 actuations + hybrids v2   ~75 min
+  figures3   figures 16-23 and animations 8-11                   ~10 min
 The grasp step of part 1 used an enclosure metric that counted an object
 pinched between two separate parts of the body as wrapped; its results are
 superseded by the wrap step (see README).
@@ -31,10 +35,11 @@ sys.path[:0] = [str(HERE), str(HERE.parents[1])]
 
 from spirob_study import (analytic, designs as D, exp_curl, exp_friction, exp_grasp,  # noqa: E402
                           exp_print, exp_validation, exp_workspace, exp_wrap, figures, figures2, media,
-                          media_runs, summary, summary2)
+                          media_runs, summary, summary2, exp_position, exp_wrap3, figures3, media3,
+                          summary3)
 
 STEPS = ("build", "curl", "workspace", "grasp", "print", "validate", "figures",
-         "build2", "friction", "wrap", "figures2")
+         "build2", "friction", "wrap", "figures2", "position", "wrap3", "figures3")
 PART1 = STEPS[:7]
 
 
@@ -72,6 +77,22 @@ def main():
     if "figures2" in steps:
         figures2.main(); summary2.table()
         media_runs.main()
+
+    if "position" in steps:
+        exp_position.main(); exp_position.main_equivalence()
+    if "wrap3" in steps:
+        for g in ("main", "nofric", "mjlab", "dtcheck", "hybrid2"):
+            exp_wrap3.main(g)
+    if "figures3" in steps:
+        summary3.table(); figures3.main_p1(); figures3.main_p2()
+        media3.anim8_reel_in(); media3.anim10_memory()
+        from spirob_study import actuation as A
+        res = media3.run_cases(D.length_design(0.45, 6.3), (0.0898, 0.2469),
+                               modes=("force", "position", A.Gains("capped", per_cable=True),
+                                      A.Gains("admittance", per_cable=True)))
+        media3.anim9_actuators(res, title="The same held egg (45 cm body, μ = 0.2), four ways to drive the cables")
+        res1 = media3.run_cases(D.length_design(0.45, 6.3), (0.0584, 0.2469), modes=("position", "capped"))
+        media3.anim11_operating_point(res1)
 
 
 if __name__ == "__main__":

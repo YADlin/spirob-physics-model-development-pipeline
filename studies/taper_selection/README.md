@@ -7,6 +7,78 @@
 > replaces them with a strict wrap test. Part 1's curling, printing, validation and joint-limit
 > results are unaffected.
 
+## Part 3 — driving the cables by length, and force/length hybrids (25 Nov 2026)
+
+**Questions.** (1) Parts 1–2 drove the cables by force; spirob-mjlab and the hardware drive them by
+length. Does that change the curl, the friction behaviour, and what the body can wrap and carry?
+(2) Can a mix of length and force control keep the good parts of both?
+
+**Actuators compared** (`spirob_study/actuation.py`). Every mode runs the same programme. Programmes
+are written as cable tensions and converted to lengths through each body's free-curl curve. Without
+friction or contact, both give the same shape (tip within 2.2 mm, `p1d_equivalence.json`).
+
+| Mode | What is commanded | In contact |
+|---|---|---|
+| force | tension | tension stays as commanded |
+| length, stiff spool | length, kp = 100 N/mm (inextensible), limit 1000 N | tension rises to the limit |
+| length, mjlab servo | length, kp = 2.5 N/mm, kv = 20 (spirob-mjlab) | tension rises 2.5 N per mm blocked |
+| hybrid A1 | length + one fixed force limit (1.25 f_pack) on the servo | becomes force control at the limit |
+| hybrid A2 | per cable: length and force limit (programme tension + 0.2 f_pack) | as A1, and both cables can pull at once (co-contraction) |
+| hybrid B1 / B2 | length servo (2.5 N/mm) + software force loop at 100 Hz, fixed / per-cable reference | pays cable out when tension exceeds the reference |
+
+All length modes use the spirob-mjlab rate limit of 0.1 m/s and a 100 Hz command update.
+With friction, the friction model reads the measured actuator tension (`correction=True`).
+
+**Results.**
+
+| Finding | Number | Source |
+|---|---|---|
+| Cable needed to curl fully (stroke) | 66 mm current robot, 141 mm at 45 cm 6.3°, 183 mm authors' 45 cm | `p1a_strokes.json`, fig 17 |
+| spirob-mjlab length range | 0.15–0.29 m (±70 mm) already matches the current robot's full curl (66 mm in, 62 mm out) | fig 17 |
+| Stretch of the mjlab servo at the grip force | 3.0 mm current robot (4.6 % of stroke), 9 mm at 45 cm; 1 % needs ≥ 12 N/mm | fig 19 |
+| Full command with friction, mjlab servo | only 17–40 % of joints reach their stop (current robot 40 %) | fig 19 |
+| Full command with friction, stiff spool | 78–100 % of joints lock, but it takes 85 N at 45 cm (21 N without friction) and 225 N on the authors' body | `p1b_ramps.json` |
+| Tip difference, same command in vs out (μ = 0.2) | force 24–63 mm, length 9–17 mm | fig 20, anim 10 |
+| Held egg, μ = 0.2, egg ends in the curl / moved ≥ 45 mm (45 cm 6.3°) | force 10/21, 3 · length 4/21, 0 · A1 8/21, 0 · **A2 10/21, 6** · B1 3/21, 1 · B2 4/21, 0 | fig 21 |
+| Squeeze on the egg (median, held ≥ 0.1 s) | force 6 N · stiff length ~900 N · mjlab length ~45 N · hybrids 6–7 N (egg cracks ≈ 30 N) | fig 22 |
+| Without cable friction (45 cm 6.3°) | force: 10 → 1 in curl; hybrid A1: 8 → 10 | fig 23 |
+| Egg free on its pedestal | lost by every mode (pushed off); length control pushes hardest (median 21–25 N on the 45 cm bodies vs ~3 N for force) | `summary_part3.json` |
+| 22.6 cm bodies (current, 8°) | at most 2 of 12–13 positions in the curl, none moved, under every mode | fig 21 |
+| Authors' 45 cm | grips at 53 N; squeeze > 30 N in 10–14 of 19–20 cases under every mode | fig 21 |
+| Checks | time step halved: ±1 case; mjlab servo vs stiff: same success, more crack risk | fig 23 |
+
+**Conclusions.**
+1. Driving the cable by length does not change how the body curls (tip first, base last), but it
+   makes the shape repeatable under friction. That is the main gain from length control.
+2. Pure length control with an inextensible cable is unsafe in contact. When the body is blocked,
+   the tension goes to whatever limit the servo has (1000 N in spirob-mjlab) and the egg is crushed.
+   This holds for the mjlab servo too, which is compliant but still squeezes 45 N on the median.
+3. **A length servo with a force limit per cable (hybrid A2) is the best option.** In free space it is
+   length control (precise, little friction memory). In contact it is force control (bounded
+   squeeze). It is also the only mode that moved the egg more often than force control (6 vs 3 at
+   45 cm). It wraps without relying on friction, which force control cannot. A single fixed limit
+   (A1) wraps as well but cannot co-contract, so it cannot carry. A 100 Hz software force loop (B)
+   is too slow on a stiff spool and too soft on the mjlab one.
+4. Part 2's length conclusion stands: only ~45 cm bodies carry the egg, the 22.6 cm robot does not,
+   and the free egg on the pedestal is lost by every actuator.
+
+**For spirob-mjlab (not applied).** Give each cable a force limit near the grip force (about
+8–10 N for the current robot) instead of 1000 N. A limit that the policy can command (hybrid A2)
+works best. It can be implemented in the action term as `cmd ≥ L_actual − F_limit / kp` at every
+physics step. Raise kp to ≥ 12 N/mm. Penalise squeeze above about 30 N.
+
+**Limitations.** Results are counts over 12–21 positions per body; single positions often change
+outcome between modes, and between runs with a smaller time step, so read the counts rather than
+individual cases. Above ~100 N the stiff-spool contacts are numerically violent (up to 5 of 21 runs
+in a group hit a MuJoCo instability warning). All of them are stiff-spool runs that had already passed
+the crack threshold, and none counts as a wrap. Cable friction μ = 0.2 is still assumed. Egg
+cracking is judged by a single 30 N squeeze threshold (quasi-static breaking force ~32 N, Koprivica
+et al. 2021); a distributed wrap is gentler than plate compression, so this is conservative.
+
+**Files.** `actuation.py`, `exp_position.py`, `exp_wrap3.py`, `figures3.py`, `media3.py`,
+`summary3.py`; results in `results/position/`; figures 16–23, animations 8–11.
+Reproduce: `run_all.py --only position wrap3 figures3`.
+
 ## Part 2 — cable friction, length and wrapping (24 Nov 2026)
 
 **Questions.** (1) What does cable friction do to the SpiRob, and how can it be put in MuJoCo and
