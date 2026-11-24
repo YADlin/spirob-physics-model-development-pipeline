@@ -121,3 +121,18 @@ def osr_print_design() -> Design:
     return Design(OSR_PRINT_NAME, L, d_tip, phi, 30.0,
                   policy="exact_requested_length", group="osr",
                   note="authors' example print file, 24 units")
+
+
+def osr_full_design() -> Design:
+    """The same file at scale 1: 24 units, b = 0.1764 (phi = 10 deg), a = 4.95 mm.
+
+    This is the robot of the paper's Fig. 3 and Videos S3/S6 ("24 units for
+    a total length of 45 cm"), the body used for every two-cable grasping
+    demonstration.
+    """
+    b, a = 0.1764, 4.95e-3
+    E = math.exp(2 * math.pi * b)
+    L = g.continuous_arc_length(4 * math.pi, a, b)
+    return Design("authors_45cm", L, a * (E - 1.0), math.degrees(g.phi_from_b(b)), 30.0,
+                  policy="exact_requested_length", group="length",
+                  note="authors' 45 cm two-cable robot (Fig. 3), unscaled print file")

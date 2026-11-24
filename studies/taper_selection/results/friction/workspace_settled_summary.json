@@ -1,0 +1,170 @@
+[
+ {
+  "design": "phi6p3",
+  "mu": 0.0,
+  "spread_mm": 0.0,
+  "cells": 63
+ },
+ {
+  "design": "phi6p3",
+  "mu": 0.1,
+  "spread_mm": 4.86102578550115,
+  "cells": 80
+ },
+ {
+  "design": "phi6p3",
+  "mu": 0.2,
+  "spread_mm": 7.723954967072617,
+  "cells": 92
+ },
+ {
+  "design": "phi6p3",
+  "mu": 0.3,
+  "spread_mm": 10.000948757831823,
+  "cells": 91
+ },
+ {
+  "design": "phi8p0",
+  "mu": 0.0,
+  "spread_mm": 0.0,
+  "cells": 61
+ },
+ {
+  "design": "phi8p0",
+  "mu": 0.1,
+  "spread_mm": 5.058748032766956,
+  "cells": 81
+ },
+ {
+  "design": "phi8p0",
+  "mu": 0.2,
+  "spread_mm": 6.917315625407212,
+  "cells": 96
+ },
+ {
+  "design": "phi8p0",
+  "mu": 0.3,
+  "spread_mm": 9.497343074748562,
+  "cells": 102
+ },
+ {
+  "design": "phi10p0",
+  "mu": 0.0,
+  "spread_mm": 0.0,
+  "cells": 63
+ },
+ {
+  "design": "phi10p0",
+  "mu": 0.1,
+  "spread_mm": 4.968288570886169,
+  "cells": 83
+ },
+ {
+  "design": "phi10p0",
+  "mu": 0.2,
+  "spread_mm": 7.4530381273604585,
+  "cells": 100
+ },
+ {
+  "design": "phi10p0",
+  "mu": 0.3,
+  "spread_mm": 11.279223334642145,
+  "cells": 105
+ },
+ {
+  "design": "L450_phi6p3",
+  "mu": 0.0,
+  "spread_mm": 0.0,
+  "cells": 93
+ },
+ {
+  "design": "L450_phi6p3",
+  "mu": 0.1,
+  "spread_mm": 9.447602479242729,
+  "cells": 95
+ },
+ {
+  "design": "L450_phi6p3",
+  "mu": 0.2,
+  "spread_mm": 13.422864130727982,
+  "cells": 109
+ },
+ {
+  "design": "L450_phi6p3",
+  "mu": 0.3,
+  "spread_mm": 15.34078434823184,
+  "cells": 107
+ },
+ {
+  "design": "L450_phi8p0",
+  "mu": 0.0,
+  "spread_mm": 0.0,
+  "cells": 92
+ },
+ {
+  "design": "L450_phi8p0",
+  "mu": 0.1,
+  "spread_mm": 9.136089814478341,
+  "cells": 94
+ },
+ {
+  "design": "L450_phi8p0",
+  "mu": 0.2,
+  "spread_mm": 11.578728934618283,
+  "cells": 106
+ },
+ {
+  "design": "L450_phi8p0",
+  "mu": 0.3,
+  "spread_mm": 12.116140176721387,
+  "cells": 106
+ },
+ {
+  "design": "L450_phi10p0",
+  "mu": 0.0,
+  "spread_mm": 0.0,
+  "cells": 79
+ },
+ {
+  "design": "L450_phi10p0",
+  "mu": 0.1,
+  "spread_mm": 8.239207288464767,
+  "cells": 98
+ },
+ {
+  "design": "L450_phi10p0",
+  "mu": 0.2,
+  "spread_mm": 11.471965611306434,
+  "cells": 106
+ },
+ {
+  "design": "L450_phi10p0",
+  "mu": 0.3,
+  "spread_mm": 14.534153985497046,
+  "cells": 104
+ },
+ {
+  "design": "authors_45cm",
+  "mu": 0.0,
+  "spread_mm": 0.0,
+  "cells": 90
+ },
+ {
+  "design": "authors_45cm",
+  "mu": 0.1,
+  "spread_mm": 8.865235162224502,
+  "cells": 101
+ },
+ {
+  "design": "authors_45cm",
+  "mu": 0.2,
+  "spread_mm": 12.04348122411707,
+  "cells": 110
+ },
+ {
+  "design": "authors_45cm",
+  "mu": 0.3,
+  "spread_mm": 14.971925867631384,
+  "cells": 112
+ }
+]

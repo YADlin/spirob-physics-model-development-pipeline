@@ -199,6 +199,12 @@ def make(design: Design, *, law: str = "cubic", limits: str = "dtheta",
             ET.SubElement(ob, "joint", name=f"{obj['name']}_x", type="slide", axis="1 0 0", damping="0.05", limited="false")
             ET.SubElement(ob, "joint", name=f"{obj['name']}_y", type="slide", axis="0 1 0", damping="0.05", limited="false")
             ET.SubElement(ob, "joint", name=f"{obj['name']}_r", type="hinge", axis="0 0 1", damping="1e-4", limited="false")
+        if obj.get("weld"):          # a holder: a stiff weld to the world, switched off to release
+            eq = root.find("equality")
+            if eq is None:
+                eq = ET.SubElement(root, "equality")
+            ET.SubElement(eq, "weld", name=f"{obj['name']}_holder", body1=obj["name"],
+                          solref=f"{max(2 * timestep, 4e-4):.6g} 1")
         ET.SubElement(ob, "geom", name=f"{obj['name']}_geom", type="cylinder",
                       size=f"{obj['radius']:.9g} 0.06", rgba="0.95 0.75 0.25 0.9",
                       friction="0.6 0.01 0.001", density="300", condim="3")

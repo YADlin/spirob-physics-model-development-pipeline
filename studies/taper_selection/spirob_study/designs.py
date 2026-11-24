@@ -62,6 +62,25 @@ PAPER = tuple(
 OSR_PRINT_NAME = "osr_print_phi10"
 
 
+# Length study: the taper candidates at four lengths, tip width held at the
+# current robot's 7.139 mm (the tip is set by the cable holes and the printer).
+LENGTHS = (0.22628, 0.30, 0.375, 0.45)
+LENGTH_PHI = (6.3, 8.0, 10.0)
+
+
+def length_design(L: float, phi: float) -> Design:
+    if abs(L - 0.22628) < 1e-9:
+        return sweep_by_phi()[phi]
+    # whole units: the exact-length policy can leave a base stub too short for
+    # its joint face at these lengths; the assembled length is measured anyway
+    return Design(f"L{int(round(L * 1000))}_phi{str(phi).replace('.', 'p')}", L, 0.007139, phi, 30.0,
+                  policy="whole_units", group="length")
+
+
+def length_grid() -> list[Design]:
+    return [length_design(L, p) for L in LENGTHS for p in LENGTH_PHI]
+
+
 def sweep_by_phi() -> dict[float, Design]:
     return {d.phi_deg: d for d in SWEEP}
 
